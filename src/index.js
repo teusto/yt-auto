@@ -2876,6 +2876,14 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
         words = CONFIG.transcript ? CONFIG.transcript.words : null;
         hasStandardSubs = true;
       }
+    } else if (hasStandardSubs && fs.existsSync(subtitlePathSRT)) {
+      // SRT exists but ASS may be outdated - delete ASS so it gets regenerated with current style
+      if (fs.existsSync(subtitlePathASS)) {
+        fs.unlinkSync(subtitlePathASS);
+        console.log('   🔄 Existing ASS file removed (will be regenerated with current style)');
+      }
+      console.log('   ℹ️  Using existing subtitles (no word timestamps for karaoke)');
+      console.log('   💡 Tip: Delete subtitles.srt to regenerate with karaoke support\n');
     }
     
     // Prompt for font and subtitle style if ANY subtitles exist (only in interactive mode)

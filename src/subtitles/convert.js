@@ -86,9 +86,11 @@ export function convertSRTtoASS(srtPath, style, videoWidth, videoHeight, colorTo
       // Karaoke style with word-level timestamps
       console.log(`   🎤 Generating karaoke subtitles with ${words.length} word timestamps`);
       for (const sub of subtitles) {
-        // Filter words that fall within this subtitle's time range
+        // Filter words that overlap with this subtitle's time range
+        // Include words that start before subtitle ends AND end after subtitle starts
+        // Add small buffer (50ms) to catch words at boundaries
         const subWords = words.filter(w => 
-          w.start >= sub.startMs && w.start < sub.endMs
+          w.start < sub.endMs + 50 && w.end > sub.startMs - 50
         );
         
         if (subWords.length > 0) {
