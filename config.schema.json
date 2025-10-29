@@ -1,0 +1,372 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "YT-Machine Configuration Schema",
+  "description": "Configuration schema for channel.json and config.json files",
+  
+  "definitions": {
+    "aspectRatio": {
+      "type": "string",
+      "enum": ["9:16", "16:9", "1:1", "4:5"],
+      "description": "Video aspect ratio"
+    },
+    
+    "animation": {
+      "type": "string",
+      "enum": ["none", "static", "zoom-in", "zoom-out", "pan-left", "pan-right", "pan-up", "pan-down"],
+      "description": "Animation effect for images"
+    },
+    
+    "quality": {
+      "type": "string",
+      "enum": ["draft", "standard", "high", "ultra"],
+      "description": "Video quality preset"
+    },
+    
+    "position": {
+      "type": "string",
+      "enum": ["top", "center", "bottom"],
+      "description": "Vertical position"
+    },
+    
+    "ctaPosition": {
+      "type": "string",
+      "enum": ["top-left", "top-right", "bottom-left", "bottom-right", "center"],
+      "description": "CTA overlay position"
+    },
+    
+    "subtitleStyle": {
+      "type": "string",
+      "enum": ["minimal", "bold", "elegant", "modern", "playful", "cinematic"],
+      "description": "Subtitle style preset"
+    },
+    
+    "subtitleConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable or disable subtitles"
+        },
+        "style": {
+          "$ref": "#/definitions/subtitleStyle"
+        },
+        "position": {
+          "$ref": "#/definitions/position"
+        },
+        "fontSize": {
+          "type": "number",
+          "minimum": 12,
+          "maximum": 120,
+          "description": "Font size in pixels"
+        },
+        "fontName": {
+          "type": "string",
+          "description": "Font name (file from fonts/ folder without extension)"
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Text color (hex)"
+        },
+        "outlineColor": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Outline color (hex)"
+        },
+        "outlineWidth": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Outline width"
+        },
+        "shadowColor": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Shadow color (hex)"
+        },
+        "shadowOffset": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Shadow offset"
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "audioConfig": {
+      "type": "object",
+      "properties": {
+        "voiceVolume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Voice audio volume (0.0 - 1.0)"
+        },
+        "musicVolume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Background music volume (0.0 - 1.0)"
+        },
+        "voiceFadeIn": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Voice fade in duration (seconds)"
+        },
+        "voiceFadeOut": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Voice fade out duration (seconds)"
+        },
+        "musicFadeIn": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Music fade in duration (seconds)"
+        },
+        "musicFadeOut": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Music fade out duration (seconds)"
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "languageLearningConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable dual subtitle mode"
+        },
+        "targetPosition": {
+          "$ref": "#/definitions/position",
+          "description": "Target language subtitle position"
+        },
+        "nativePosition": {
+          "$ref": "#/definitions/position",
+          "description": "Native language subtitle position"
+        },
+        "targetFontSize": {
+          "type": "number",
+          "minimum": 12,
+          "maximum": 120,
+          "description": "Target language font size"
+        },
+        "nativeFontSize": {
+          "type": "number",
+          "minimum": 12,
+          "maximum": 120,
+          "description": "Native language font size"
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "ctaConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable CTA overlay"
+        },
+        "position": {
+          "$ref": "#/definitions/ctaPosition"
+        },
+        "startTime": {
+          "type": "number",
+          "minimum": 0,
+          "description": "When to show CTA (seconds from start)"
+        },
+        "endTime": {
+          "type": "number",
+          "minimum": 0,
+          "description": "When to hide CTA (seconds from start)"
+        },
+        "fadeIn": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "Fade in duration (seconds)"
+        },
+        "fadeOut": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "Fade out duration (seconds)"
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2,
+          "description": "CTA size scale"
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "introOutroConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable intro/outro"
+        },
+        "videoFile": {
+          "type": "string",
+          "description": "Video filename from intros/ folder"
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "exportFormatsConfig": {
+      "type": "object",
+      "properties": {
+        "formats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["9:16", "16:9", "1:1", "4:5", "original"]
+          },
+          "description": "List of aspect ratios to export"
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "videoConfig": {
+      "type": "object",
+      "properties": {
+        "aspectRatio": {
+          "$ref": "#/definitions/aspectRatio"
+        },
+        "useOriginalSize": {
+          "type": "boolean",
+          "description": "Use custom dimensions instead of preset"
+        },
+        "videoWidth": {
+          "type": "number",
+          "minimum": 100,
+          "description": "Custom video width (if useOriginalSize)"
+        },
+        "videoHeight": {
+          "type": "number",
+          "minimum": 100,
+          "description": "Custom video height (if useOriginalSize)"
+        },
+        "randomImages": {
+          "type": "boolean",
+          "description": "Use random image selection from pool"
+        },
+        "imageCount": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Number of images to use"
+        },
+        "animation": {
+          "$ref": "#/definitions/animation"
+        },
+        "quality": {
+          "$ref": "#/definitions/quality"
+        },
+        "fps": {
+          "type": "number",
+          "enum": [24, 30, 60],
+          "description": "Frames per second"
+        },
+        "subtitle": {
+          "$ref": "#/definitions/subtitleConfig"
+        },
+        "audio": {
+          "$ref": "#/definitions/audioConfig"
+        },
+        "languageLearning": {
+          "$ref": "#/definitions/languageLearningConfig"
+        },
+        "cta": {
+          "$ref": "#/definitions/ctaConfig"
+        },
+        "intro": {
+          "$ref": "#/definitions/introOutroConfig"
+        },
+        "outro": {
+          "$ref": "#/definitions/introOutroConfig"
+        },
+        "exportFormats": {
+          "$ref": "#/definitions/exportFormatsConfig"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  
+  "oneOf": [
+    {
+      "title": "Channel Configuration",
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Channel name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Channel description"
+        },
+        "defaults": {
+          "$ref": "#/definitions/videoConfig",
+          "description": "Default settings for all videos in this channel"
+        },
+        "videoTypes": {
+          "type": "object",
+          "description": "Reusable video type presets",
+          "patternProperties": {
+            "^[a-zA-Z0-9_-]+$": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/videoConfig"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "type": "string",
+                      "description": "Description of this video type"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "Video Configuration",
+      "allOf": [
+        {
+          "$ref": "#/definitions/videoConfig"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "videoType": {
+              "type": "string",
+              "description": "Reference to a video type defined in channel.json"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

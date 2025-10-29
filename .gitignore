@@ -1,0 +1,11 @@
+node_modules/
+output/*.mp4
+output/*.txt
+.DS_Store
+*.log
+.env
+.image-pool-history.json
+.music-pool-history.json
+.temp/
+.tts-cache/
+*.backup.*

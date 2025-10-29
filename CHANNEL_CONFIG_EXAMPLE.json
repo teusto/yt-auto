@@ -1,0 +1,40 @@
+{
+  "name": "My Portuguese Channel",
+  "description": "Prayer videos in Brazilian Portuguese",
+  "defaults": {
+    "aspectRatio": "9:16",
+    "animation": "zoom-in",
+    "qualityMode": "high",
+    "language": "pt",
+    "randomImages": true,
+    "useChannelPool": true,
+    "imageCount": 8,
+    "randomMusic": true,
+    "useChannelMusicPool": true,
+    "subtitle": {
+      "style": "minimal",
+      "fontSize": 48,
+      "position": "bottom"
+    },
+    "audio": {
+      "voiceVolume": 1.0,
+      "musicVolume": 0.35,
+      "musicFadeIn": 2,
+      "musicFadeOut": 3
+    }
+  },
+  "videoTypes": {
+    "prayer-short": {
+      "description": "Short prayer videos for TikTok/Shorts",
+      "aspectRatio": "9:16",
+      "imageCount": 5,
+      "animation": "zoom-in"
+    },
+    "prayer-youtube": {
+      "description": "Longer prayer videos for YouTube",
+      "aspectRatio": "16:9",
+      "imageCount": 12,
+      "animation": "zoom-in"
+    }
+  }
+}

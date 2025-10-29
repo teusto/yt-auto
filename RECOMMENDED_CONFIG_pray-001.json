@@ -1,0 +1,12 @@
+{
+  "videoType": "shorts",
+  "subtitle": {
+    "enabled": true,
+    "fontSize": 48,
+    "fontColor": "red",
+    "outlineColor": "black",
+    "outlineWidth": 3,
+    "position": "center",
+    "bold": true
+  }
+}

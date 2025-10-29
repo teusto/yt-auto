@@ -1,0 +1,35 @@
+{
+  "name": "yt-machine",
+  "version": "1.0.0",
+  "description": "Automated video generation with images, voiceover, and subtitles using ffmpeg",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "generate": "node src/index.js",
+    "channel:create": "node channel-create.js",
+    "subtitles": "node src/generate-subtitles.js",
+    "tts:setup": "node tts-setup.js",
+    "tts:init": "node tts-init.js",
+    "tts:generate": "node tts-generate.js",
+    "tts:voices": "node tts-voices.js",
+    "tts:test": "node tts-test.js"
+  },
+  "keywords": [
+    "ffmpeg",
+    "video",
+    "automation",
+    "subtitles",
+    "content-creation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "assemblyai": "^4.18.0",
+    "csv-parser": "^3.2.0",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^17.2.3",
+    "fluent-ffmpeg": "^2.1.2",
+    "microsoft-cognitiveservices-speech-sdk": "^1.46.0"
+  }
+}

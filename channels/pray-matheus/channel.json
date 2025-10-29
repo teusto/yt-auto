@@ -1,0 +1,98 @@
+{
+  "name": "pray-matheus",
+  "description": "Praying content - Multiple video formats",
+  "platform": "youtube",
+  
+  "defaults": {
+    "aspectRatio": "9:16",
+    "animation": "none",
+    "qualityMode": "high",
+    "language": "pt",
+    
+    "randomImages": true,
+    "imageCount": 8,
+    "useChannelPool": true,
+    "fallbackToGlobalPool": true,
+    
+    "randomMusic": true,
+    "useChannelMusicPool": true,
+    
+    "subtitle": {
+      "style": "minimal",
+      "position": "bottom",
+      "fontSize": 40
+    },
+    
+    "audio": {
+      "musicVolume": 0.25,
+      "musicFadeIn": 2,
+      "musicFadeOut": 0.5,
+      "voiceFadeIn": 1,
+      "voiceFadeOut": 0.5
+    },
+    
+    "cta": {
+      "enabled": false
+    },
+    
+    "exportFormats": {
+      "enabled": false
+    }
+  },
+
+  "outputNaming": {
+    "pattern": "{platform}-{title}-{date}",
+    "includeVideoId": true,
+    "slugify": true,
+    "maxLength": 80,
+    "dateFormat": "YYYY-MM-DD"
+  },
+  
+  "videoTypes": {
+    "shorts": {
+      "description": "Short vertical prayer videos for TikTok/Shorts",
+      "aspectRatio": "9:16",
+      "animation": "none",
+      "imageCount": 5,
+      "subtitle": {
+        "style": "bold-pop",
+        "position": "bottom",
+        "fontSize": 20,
+        "viralStyle": "bold-pop",
+        "highlightColor": "yellow",
+        "shadowStrength": 5
+      },
+      "audio": {
+        "musicVolume": 0.15
+      }
+    },
+    
+    "long-form": {
+      "description": "Long-form prayer videos for YouTube",
+      "aspectRatio": "16:9",
+      "animation": "none",
+      "imageCount": 6,
+      "subtitle": {
+        "style": "minimal",
+        "position": "bottom",
+        "fontSize": 32
+      },
+      "audio": {
+        "musicVolume": 0.20
+      }
+    },
+    
+    "podcast": {
+      "description": "Podcast-style prayer content",
+      "aspectRatio": "16:9",
+      "animation": "static",
+      "imageCount": 1,
+      "subtitle": {
+        "enabled": false
+      },
+      "audio": {
+        "musicVolume": 0.15
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "aspectRatio": "9:16",
+  "randomImages": true,
+  "imageCount": 5,
+  "useSharedPool": true,
+  "animation": "none",
+  "subtitle": {
+    "style": "minimal",
+    "position": "bottom"
+  }
+}
