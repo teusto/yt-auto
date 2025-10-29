@@ -9,3 +9,7 @@ output/*.txt
 .temp/
 .tts-cache/
 *.backup.*
+input/*
+!input/.gitkeep
+channel/*
+!channel/README.md
