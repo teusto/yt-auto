@@ -11,5 +11,5 @@ output/*.txt
 *.backup.*
 input/*
 !input/.gitkeep
-channel/*
-!channel/README.md
+channels/*
+!channels/README.md
