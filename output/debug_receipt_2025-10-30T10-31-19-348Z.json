@@ -1,0 +1,195 @@
+{
+  "timestamp": "2025-10-30T10:29:42.490Z",
+  "mode": "batch-channel",
+  "config": {
+    "inputFolder": "/home/teusto/yt-machine/input",
+    "outputFolder": "/home/teusto/yt-machine/output",
+    "fontsFolder": "/home/teusto/yt-machine/fonts",
+    "introsFolder": "/home/teusto/yt-machine/intros",
+    "ctaFolder": "/home/teusto/yt-machine/cta",
+    "videoWidth": 1920,
+    "videoHeight": 1080,
+    "fps": 30,
+    "animationFps": 24,
+    "imageFormats": [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".webp",
+      ".gif"
+    ],
+    "videoFormats": [
+      ".mp4",
+      ".mov",
+      ".avi",
+      ".webm",
+      ".mkv",
+      ".flv"
+    ],
+    "audioFormats": [
+      ".mp3",
+      ".wav",
+      ".m4a",
+      ".aac"
+    ],
+    "fontFormats": [
+      ".ttf",
+      ".otf",
+      ".woff",
+      ".woff2"
+    ],
+    "subtitleFile": "subtitles.srt",
+    "aspectRatio": "16:9",
+    "useOriginalSize": false,
+    "animationEffect": "none",
+    "qualityMode": "high",
+    "aspectRatios": {
+      "16:9": {
+        "width": 1920,
+        "height": 1080
+      },
+      "9:16": {
+        "width": 1080,
+        "height": 1920
+      },
+      "4:5": {
+        "width": 1080,
+        "height": 1350
+      },
+      "1:1": {
+        "width": 1080,
+        "height": 1080
+      }
+    },
+    "audio": {
+      "voiceVolume": 1,
+      "musicVolume": 0.25,
+      "musicFadeIn": 2,
+      "musicFadeOut": 0.5,
+      "voiceFadeIn": 1,
+      "voiceFadeOut": 0.5
+    },
+    "subtitleStyle": {
+      "fontFamily": "Arial",
+      "fontPath": null,
+      "fontSize": 32,
+      "fontColor": "white",
+      "outlineColor": "black",
+      "outlineWidth": 1,
+      "backgroundColor": "transparent",
+      "position": "bottom",
+      "marginV": 50,
+      "alignment": 2,
+      "bold": false,
+      "italic": false,
+      "style": "minimal",
+      "lineSpacing": 0
+    },
+    "subtitleLanguage": "pt",
+    "languageLearning": {
+      "enabled": false,
+      "dualSubtitles": false,
+      "targetFile": "subtitles_target.srt",
+      "nativeFile": "subtitles_native.srt",
+      "targetSize": 28,
+      "nativeSize": 20,
+      "targetColor": "white",
+      "nativeColor": "#CCCCCC",
+      "spacing": 10
+    },
+    "introOutro": {
+      "enabled": false,
+      "introPath": null,
+      "outroPath": null,
+      "mode": "both"
+    },
+    "cta": {
+      "enabled": false,
+      "imagePath": null,
+      "isVideo": false,
+      "position": "right-bottom",
+      "startTime": 5,
+      "duration": 5,
+      "opacity": 0.9,
+      "scale": 0.15
+    },
+    "exportFormats": {
+      "formats": [
+        "16:9"
+      ],
+      "outputNames": {
+        "16:9": "youtube",
+        "9:16": "tiktok",
+        "1:1": "instagram",
+        "4:5": "instagram",
+        "original": "original"
+      }
+    },
+    "clips": {
+      "transition": "fade-black",
+      "fadeBlackDuration": 1
+    }
+  },
+  "execution": {
+    "startTime": "2025-10-30T10:29:42.491Z",
+    "endTime": "2025-10-30T10:31:19.348Z",
+    "duration": "96.9s",
+    "steps": [
+      {
+        "timestamp": "2025-10-30T10:30:01.985Z",
+        "name": "Start video generation",
+        "details": {
+          "skipPrompts": true,
+          "hasVideoFolder": true,
+          "hasChannelFolder": true
+        }
+      },
+      {
+        "timestamp": "2025-10-30T10:30:02.332Z",
+        "name": "Creating clips with fade effects",
+        "details": {
+          "clipCount": 2,
+          "fadeDuration": 1,
+          "totalDuration": "348.03"
+        }
+      },
+      {
+        "timestamp": "2025-10-30T10:31:19.348Z",
+        "name": "Video generation completed successfully",
+        "details": {}
+      }
+    ]
+  },
+  "files": {
+    "input": [],
+    "output": [
+      {
+        "path": "/home/teusto/yt-machine/output/video_youtube_2025-10-30T10-30-57.mp4",
+        "size": 21929089,
+        "exists": true,
+        "format": "16:9"
+      }
+    ],
+    "temp": [
+      {
+        "path": "/home/teusto/yt-machine/output/temp_paired_clip_0.mp4",
+        "description": "Paired clip 1 with transitions",
+        "size": 17870449,
+        "exists": true
+      },
+      {
+        "path": "/home/teusto/yt-machine/output/temp_paired_clip_1.mp4",
+        "description": "Paired clip 2 with transitions",
+        "size": 3901366,
+        "exists": true
+      },
+      {
+        "path": "/home/teusto/yt-machine/output/concat_list.txt",
+        "description": "Concatenation list",
+        "size": 59,
+        "exists": true
+      }
+    ]
+  },
+  "errors": []
+}

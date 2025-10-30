@@ -24,9 +24,13 @@ import { validateChannelConfig, validateProjectConfig, validateAppConfig } from 
 import { convertSRTtoASS as convertSRTtoASSExternal } from './subtitles/convert.js';
 import { buildForceStyle } from './subtitles/styler.js';
 import { logger } from './utils/logger.js';
+import * as debug from './debug/logger.js';
 
 // Load environment variables
 dotenv.config();
+
+// Initialize debug mode early
+debug.init();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,6 +80,8 @@ const CONFIG = {
     fontColor: SUBTITLE_DEFAULTS.FONT_COLOR,
     outlineColor: SUBTITLE_DEFAULTS.OUTLINE_COLOR,
     outlineWidth: SUBTITLE_DEFAULTS.OUTLINE_WIDTH,
+    shadowDepth: SUBTITLE_DEFAULTS.SHADOW_DEPTH,
+    shadowColor: SUBTITLE_DEFAULTS.SHADOW_COLOR,
     backgroundColor: SUBTITLE_DEFAULTS.BACKGROUND_COLOR,
     position: SUBTITLE_DEFAULTS.POSITION,    // 'top', 'bottom'
     marginV: SUBTITLE_DEFAULTS.MARGIN_V,
@@ -304,6 +310,108 @@ function isVideoFile(filePath) {
 function isImageFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   return CONFIG.imageFormats.includes(ext);
+}
+
+/**
+ * Extract number from filename (e.g., "audio1.mp3" => 1, "image02.jpg" => 2)
+ */
+function extractFileNumber(filePath) {
+  const basename = path.basename(filePath, path.extname(filePath));
+  const match = basename.match(/\d+/);
+  return match ? parseInt(match[0], 10) : null;
+}
+
+/**
+ * Check if files are numbered for pairing (audio1, audio2, image1, image2, etc.)
+ */
+function detectPairedMode(audioFiles, mediaFiles) {
+  // Filter out background music files
+  const voiceAudioFiles = audioFiles.filter(file => {
+    const basename = path.basename(file).toLowerCase();
+    return basename !== 'voice.mp3' && 
+           basename !== 'music.mp3' && 
+           basename !== 'background_music.mp3';
+  });
+  
+  // Need at least 2 audio files to consider paired mode
+  if (voiceAudioFiles.length < 2) {
+    return false;
+  }
+  
+  // Check if audio files have numbers
+  const audioNumbers = voiceAudioFiles.map(extractFileNumber).filter(n => n !== null);
+  if (audioNumbers.length < 2) {
+    return false;
+  }
+  
+  // Check if media files have corresponding numbers
+  const mediaNumbers = mediaFiles.map(extractFileNumber).filter(n => n !== null);
+  if (mediaNumbers.length < 2) {
+    return false;
+  }
+  
+  // Check if there's overlap in numbers
+  const commonNumbers = audioNumbers.filter(n => mediaNumbers.includes(n));
+  return commonNumbers.length >= 2;
+}
+
+/**
+ * Create paired clips from numbered audio and media files
+ * Returns array of {audio, media, duration} objects
+ */
+async function createPairedClips(audioFiles, mediaFiles) {
+  const clips = [];
+  
+  // Filter out background music
+  const voiceAudioFiles = audioFiles.filter(file => {
+    const basename = path.basename(file).toLowerCase();
+    return basename !== 'voice.mp3' && 
+           basename !== 'music.mp3' && 
+           basename !== 'background_music.mp3';
+  });
+  
+  // Group audio and media by number
+  const audioByNumber = {};
+  const mediaByNumber = {};
+  
+  voiceAudioFiles.forEach(file => {
+    const num = extractFileNumber(file);
+    if (num !== null) {
+      audioByNumber[num] = file;
+    }
+  });
+  
+  mediaFiles.forEach(file => {
+    const num = extractFileNumber(file);
+    if (num !== null) {
+      mediaByNumber[num] = file;
+    }
+  });
+  
+  // Find common numbers and create clips
+  const numbers = Object.keys(audioByNumber)
+    .map(Number)
+    .filter(n => mediaByNumber[n])
+    .sort((a, b) => a - b);
+  
+  console.log(`\n🎬 Paired Mode: Found ${numbers.length} matched clips`);
+  
+  for (const num of numbers) {
+    const audioFile = audioByNumber[num];
+    const mediaFile = mediaByNumber[num];
+    const duration = await getAudioDuration(audioFile);
+    
+    clips.push({
+      number: num,
+      audio: audioFile,
+      media: mediaFile,
+      duration: duration
+    });
+    
+    console.log(`   Clip ${num}: ${path.basename(audioFile)} (${duration.toFixed(2)}s) + ${path.basename(mediaFile)}`);
+  }
+  
+  return clips;
 }
 
 /**
@@ -547,6 +655,14 @@ function detectChannelProjects(channelPath, channelConfig) {
     // Look for required files
     const voiceFile = findFileByPattern(projectPath, /^voice\.(mp3|wav)$/i);
     
+    // Check for paired mode audio files (audio1.mp3, audio2.mp3, etc.)
+    const allAudioFiles = fs.readdirSync(projectPath)
+      .filter(f => /\.(mp3|wav)$/i.test(f))
+      .filter(f => !/^(music|background_music)\.(mp3|wav)$/i.test(f))
+      .map(f => path.join(projectPath, f));
+    
+    const hasPairedAudio = allAudioFiles.some(f => /audio\d+\.(mp3|wav)$/i.test(path.basename(f)));
+    
     // Check for music file (project-specific)
     let musicFile = findFileByPattern(projectPath, /^music\.(mp3|wav)$/i);
     
@@ -595,12 +711,15 @@ function detectChannelProjects(channelPath, channelConfig) {
     const hasImages = fs.existsSync(imagesFolder) && fs.readdirSync(imagesFolder).length > 0;
     const hasVideos = fs.existsSync(videosSubFolder) && fs.readdirSync(videosSubFolder).length > 0;
     
-    // Project is valid if has voice and either local media or uses pool
-    if (voiceFile && (hasImages || hasVideos || useChannelPool)) {
+    // Project is valid if has audio (voice.mp3 OR paired mode) and either local media or uses pool
+    const hasAudio = voiceFile || hasPairedAudio;
+    if (hasAudio && (hasImages || hasVideos || useChannelPool)) {
       const project = {
         name: folder,
         path: projectPath,
         voice: voiceFile,
+        pairedMode: hasPairedAudio && !voiceFile,  // True if using paired audio mode
+        audioFiles: hasPairedAudio ? allAudioFiles.filter(f => /audio\d+\.(mp3|wav)$/i.test(path.basename(f))) : [],
         music: musicFile || null,
         subtitles: subtitleFile || null,
         subtitlesTarget: targetSubFile || null,
@@ -615,7 +734,15 @@ function detectChannelProjects(channelPath, channelConfig) {
       
       // Show project summary
       console.log(`✅ ${folder}`);
-      console.log(`   Voice: ${path.basename(voiceFile)}`);
+      
+      // Show audio mode
+      if (voiceFile) {
+        console.log(`   Voice: ${path.basename(voiceFile)}`);
+      } else if (hasPairedAudio) {
+        const pairedCount = allAudioFiles.filter(f => /audio\d+\.(mp3|wav)$/i.test(path.basename(f))).length;
+        console.log(`   🎬 Paired Mode: ${pairedCount} audio clips detected`);
+      }
+      
       if (musicFile) console.log(`   Music: ${path.basename(musicFile)}`);
       if (subtitleFile) console.log(`   Subtitles: ${path.basename(subtitleFile)}`);
       
@@ -643,7 +770,10 @@ function detectChannelProjects(channelPath, channelConfig) {
       console.log('');
     } else {
       console.log(`⚠️  ${folder} - Missing required files`);
-      if (!voiceFile) console.log(`   ❌ No ${FILE_NAMES.VOICE} found`);
+      if (!hasAudio) {
+        console.log(`   ❌ No audio found`);
+        console.log(`   💡 Add voice.mp3 OR numbered audio files (audio1.mp3, audio2.mp3, etc.)`);
+      }
       if (!hasImages && !hasVideos && !useChannelPool) {
         console.log(`   ❌ No images/ or videos/ folder with content`);
         console.log(`   💡 Tip: Enable channel pool in channel.json or add images/`);
@@ -832,6 +962,11 @@ function applyProjectConfig(projectConfig) {
     CONFIG.qualityMode = projectConfig.qualityMode;
   }
   
+  // Apply clips configuration
+  if (projectConfig.clips) {
+    CONFIG.clips = { ...CONFIG.clips, ...projectConfig.clips };
+  }
+  
   if (projectConfig.subtitle) {
     if (projectConfig.subtitle.style) {
       // Map style names to centralized constants
@@ -840,7 +975,8 @@ function applyProjectConfig(projectConfig) {
         'bold': SUBTITLE_STYLES.BOLD,
         'yellow': SUBTITLE_STYLES.YELLOW,
         'minimal': SUBTITLE_STYLES.MINIMAL,
-        'modern': SUBTITLE_STYLES.MODERN
+        'modern': SUBTITLE_STYLES.MODERN,
+        'shadow': SUBTITLE_STYLES.SHADOW
       };
       const style = styleMap[projectConfig.subtitle.style];
       if (style) {
@@ -1328,8 +1464,18 @@ async function prepareProjectInput(project) {
     fs.mkdirSync(inputFolder, { recursive: true });
   }
   
-  // Copy voice
-  fs.copyFileSync(project.voice, path.join(inputFolder, FILE_NAMES.VOICE));
+  // Copy audio files - either single voice or paired mode
+  if (project.pairedMode) {
+    // Paired mode: copy all numbered audio files
+    project.audioFiles.forEach(audioFile => {
+      const basename = path.basename(audioFile);
+      fs.copyFileSync(audioFile, path.join(inputFolder, basename));
+    });
+    console.log(`   🎬 Copied ${project.audioFiles.length} paired audio files`);
+  } else {
+    // Single audio mode: copy voice.mp3
+    fs.copyFileSync(project.voice, path.join(inputFolder, FILE_NAMES.VOICE));
+  }
   
   // Copy music if exists
   if (project.music) {
@@ -1351,7 +1497,8 @@ async function prepareProjectInput(project) {
   }
   
   // Auto-generate subtitles if they don't exist (batch mode)
-  if (!project.subtitles && !project.subtitlesTarget) {
+  // Skip for paired mode - would need to concatenate audio first
+  if (!project.subtitles && !project.subtitlesTarget && !project.pairedMode) {
     const voicePath = path.join(inputFolder, 'voice.mp3');
     // Generate to PROJECT folder so it's found on next run (caching)
     const subtitlePath = path.join(project.path, 'subtitles.srt');
@@ -1594,6 +1741,355 @@ function getAnimationFilter(imageDuration) {
 }
 
 /**
+ * Apply fade-to-black transition between two video clips
+ * Returns the filter string for ffmpeg
+ */
+function getFadeBlackTransition(duration = 0.3) {
+  const fadeOutDuration = duration / 2;
+  const fadeInDuration = duration / 2;
+  
+  return {
+    fadeOutDuration,
+    fadeInDuration,
+    totalDuration: duration
+  };
+}
+
+/**
+ * Create video from paired audio-media clips WITH fade-to-black transitions
+ * Each clip has its own audio and displays for that audio's duration
+ */
+async function createVideoWithPairedClipsAndTransitions(pairedClips, tempVideoPath, transitionDuration = 0.3) {
+  console.log(`\n📊 Creating video with ${pairedClips.length} paired clips + fade-to-black transitions`);
+  console.log(`⏱️  Transition duration: ${transitionDuration}s between each clip`);
+  
+  const totalClipDuration = pairedClips.reduce((sum, c) => sum + c.duration, 0);
+  const totalTransitionDuration = (pairedClips.length - 1) * transitionDuration;
+  const totalDuration = totalClipDuration + totalTransitionDuration;
+  
+  console.log(`⏱️  Total duration: ${totalDuration.toFixed(2)}s (${totalClipDuration.toFixed(2)}s clips + ${totalTransitionDuration.toFixed(2)}s transitions)`);
+  
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Step 1: Create individual clips (same as before)
+      console.log('\n🎬 Stage 1/3: Processing paired clips');
+      const tempClips = [];
+      
+      // Use full transition duration for each fade
+      const fadeDuration = transitionDuration;
+      debug.step('Creating clips with fade effects', { 
+        clipCount: pairedClips.length,
+        fadeDuration,
+        totalDuration: totalDuration.toFixed(2)
+      });
+      
+      for (let i = 0; i < pairedClips.length; i++) {
+        const clip = pairedClips[i];
+        const clipPath = path.join(CONFIG.outputFolder, `temp_paired_clip_${i}.mp4`);
+        tempClips.push(clipPath);
+        
+        const clipSpinner = new Spinner(`Processing clip ${i + 1}/${pairedClips.length}`);
+        clipSpinner.start();
+        
+        // Determine fade effects for this clip
+        const isFirst = i === 0;
+        const isLast = i === pairedClips.length - 1;
+        
+        // Create video clip with its audio AND baked-in fade effects
+        await new Promise((resolveClip, rejectClip) => {
+          const clipArgs = [
+            '-loop', '1',
+            '-i', clip.media,
+            '-i', clip.audio,
+            '-t', clip.duration.toString()
+          ];
+          
+          // Build video filter chain: base filters + fade effects
+          let videoFilters = [];
+          
+          // Base filter: animation or scaling
+          if (CONFIG.animationEffect !== 'static') {
+            const animationFilter = getAnimationFilter(clip.duration);
+            if (animationFilter) {
+              videoFilters.push(animationFilter);
+            }
+          } else {
+            // Static image - apply scaling/padding
+            if (CONFIG.useOriginalSize) {
+              videoFilters.push(`fps=${CONFIG.fps}`);
+            } else {
+              videoFilters.push(`scale=${CONFIG.videoWidth}:${CONFIG.videoHeight}:force_original_aspect_ratio=decrease,pad=${CONFIG.videoWidth}:${CONFIG.videoHeight}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${CONFIG.fps}`);
+            }
+          }
+          
+          // Add fade effects BAKED INTO EVERY clip (same for all)
+          // Fade in from black at start
+          videoFilters.push(`fade=t=in:st=0:d=${fadeDuration}:color=black`);
+          // Fade out to black at end
+          const fadeOutStart = Math.max(0, clip.duration - fadeDuration);
+          videoFilters.push(`fade=t=out:st=${fadeOutStart}:d=${fadeDuration}:color=black`);
+          
+          // Apply all filters
+          if (videoFilters.length > 0) {
+            const filterString = videoFilters.join(',');
+            debug.log('FILTER', `Clip ${i + 1}`, { filter: filterString });
+            clipArgs.push('-vf', filterString);
+          }
+          
+          const encodingSettings = getEncodingSettings();
+          clipArgs.push(
+            '-c:v', 'libx264',
+            '-preset', encodingSettings.preset,
+            '-crf', encodingSettings.crf,
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-ar', '44100',
+            '-ac', '2',
+            '-shortest',
+            '-pix_fmt', 'yuv420p',
+            '-y',
+            clipPath
+          );
+          
+          const clipFFmpeg = spawn('ffmpeg', clipArgs);
+          
+          let clipError = '';
+          clipFFmpeg.stderr.on('data', data => {
+            clipError += data.toString();
+          });
+          
+          clipFFmpeg.on('close', code => {
+            clipSpinner.stop();
+            if (code !== 0) {
+              console.log(`❌ Failed on paired clip ${i + 1}`);
+              console.log(`Error: ${clipError.substring(clipError.length - 500)}`);
+              rejectClip(new Error(`Paired clip ${i + 1} failed`));
+            } else {
+              console.log(`✅ Clip ${i + 1}/${pairedClips.length} complete (${clip.duration.toFixed(2)}s)`);
+              resolveClip();
+            }
+          });
+        });
+      }
+      
+      // Step 2: Concatenate clips using file-based concat (most reliable for pre-encoded clips)
+      console.log('\n🎬 Stage 2/3: Concatenating clips');
+      const concatSpinner = new Spinner('Concatenating clips with transitions');
+      concatSpinner.start();
+      
+      // Create concat list file for ffmpeg
+      const concatListPath = path.join(CONFIG.outputFolder, 'concat_list.txt');
+      const concatList = tempClips.map(clip => `file '${path.basename(clip)}'`).join('\n');
+      fs.writeFileSync(concatListPath, concatList);
+      
+      // Use concat demuxer and re-encode to ensure fades are preserved
+      const ffmpegArgs = [
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', concatListPath,
+        '-c:v', 'libx264',  // Re-encode video to ensure compatibility
+        '-preset', getEncodingSettings().preset,
+        '-crf', getEncodingSettings().crf,
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-ar', '44100',
+        '-ac', '2',
+        '-pix_fmt', 'yuv420p',
+        '-y',
+        tempVideoPath
+      ];
+      
+      const concatFFmpeg = spawn('ffmpeg', ffmpegArgs);
+      
+      let concatError = '';
+      concatFFmpeg.stderr.on('data', data => {
+        concatError += data.toString();
+      });
+      
+      concatFFmpeg.on('close', code => {
+        concatSpinner.stop();
+        
+        // Clean up temp files (preserve if debug mode)
+        if (debug.shouldPreserveTempFiles()) {
+          tempClips.forEach((clip, i) => {
+            debug.addTempFile(clip, `Paired clip ${i + 1} with transitions`);
+          });
+          debug.addTempFile(concatListPath, 'Concatenation list');
+        } else {
+          tempClips.forEach(clip => {
+            if (fs.existsSync(clip)) {
+              fs.unlinkSync(clip);
+            }
+          });
+          if (fs.existsSync(concatListPath)) {
+            fs.unlinkSync(concatListPath);
+          }
+        }
+        
+        if (code !== 0) {
+          console.log('❌ Concatenation failed');
+          console.log(`Error: ${concatError.substring(concatError.length - 1000)}`);
+          reject(new Error('Failed to concatenate clips'));
+        } else {
+          console.log('✅ Video created successfully with fade-to-black transitions');
+          resolve(tempVideoPath);
+        }
+      });
+      
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+/**
+ * Create video from paired audio-media clips WITHOUT transitions (original method)
+ * Each clip has its own audio and displays for that audio's duration
+ */
+async function createVideoWithPairedClips(pairedClips, tempVideoPath) {
+  console.log(`\n📊 Creating video with ${pairedClips.length} paired clips`);
+  console.log(`⏱️  Total duration: ${pairedClips.reduce((sum, c) => sum + c.duration, 0).toFixed(2)} seconds`);
+  
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Step 1: Create individual clips with their audio
+      console.log('\n🎬 Stage 1/2: Processing paired clips');
+      const tempClips = [];
+      
+      for (let i = 0; i < pairedClips.length; i++) {
+        const clip = pairedClips[i];
+        const clipPath = path.join(CONFIG.outputFolder, `temp_paired_clip_${i}.mp4`);
+        tempClips.push(clipPath);
+        
+        const clipSpinner = new Spinner(`Processing clip ${i + 1}/${pairedClips.length}`);
+        clipSpinner.start();
+        
+        // Create video clip with its audio
+        await new Promise((resolveClip, rejectClip) => {
+          const clipArgs = [
+            '-loop', '1',
+            '-i', clip.media,
+            '-i', clip.audio,
+            '-t', clip.duration.toString()
+          ];
+          
+          // Add animation filter if enabled
+          if (CONFIG.animationEffect !== 'static') {
+            const animationFilter = getAnimationFilter(clip.duration);
+            if (animationFilter) {
+              clipArgs.push('-vf', animationFilter);
+            }
+          } else {
+            // Static image - apply scaling/padding
+            if (CONFIG.useOriginalSize) {
+              clipArgs.push('-vf', `fps=${CONFIG.fps}`);
+            } else {
+              clipArgs.push('-vf', `scale=${CONFIG.videoWidth}:${CONFIG.videoHeight}:force_original_aspect_ratio=decrease,pad=${CONFIG.videoWidth}:${CONFIG.videoHeight}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${CONFIG.fps}`);
+            }
+          }
+          
+          const encodingSettings = getEncodingSettings();
+          clipArgs.push(
+            '-c:v', 'libx264',
+            '-preset', encodingSettings.preset,
+            '-crf', encodingSettings.crf,
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-ar', '44100',        // Sample rate
+            '-ac', '2',            // Stereo audio (2 channels)
+            '-shortest',
+            '-pix_fmt', 'yuv420p',
+            '-y',
+            clipPath
+          );
+          
+          const clipFFmpeg = spawn('ffmpeg', clipArgs);
+          
+          let clipError = '';
+          clipFFmpeg.stderr.on('data', data => {
+            clipError += data.toString();
+          });
+          
+          clipFFmpeg.on('close', code => {
+            clipSpinner.stop();
+            if (code !== 0) {
+              console.log(`❌ Failed on paired clip ${i + 1}`);
+              console.log(`Error: ${clipError.substring(clipError.length - 500)}`);
+              rejectClip(new Error(`Paired clip ${i + 1} failed`));
+            } else {
+              console.log(`✅ Clip ${i + 1}/${pairedClips.length} complete (${clip.duration.toFixed(2)}s)`);
+              resolveClip();
+            }
+          });
+        });
+      }
+      
+      // Step 2: Concatenate all clips
+      console.log('\n🎬 Stage 2/2: Combining clips');
+      const concatListPath = path.join(CONFIG.outputFolder, 'paired_concat_list.txt');
+      const concatList = tempClips.map(clip => `file '${path.basename(clip)}'`).join('\n');
+      fs.writeFileSync(concatListPath, concatList);
+      
+      const concatSpinner = new Spinner('Concatenating clips');
+      concatSpinner.start();
+      
+      const concatArgs = [
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', concatListPath,
+        '-c:v', 'copy',      // Copy video (already encoded)
+        '-c:a', 'aac',       // Re-encode audio to avoid corruption
+        '-b:a', '192k',      // Audio bitrate
+        '-ar', '44100',      // Ensure consistent sample rate
+        '-ac', '2',          // Ensure stereo output
+        '-y',
+        tempVideoPath
+      ];
+      
+      const concatFFmpeg = spawn('ffmpeg', concatArgs);
+      
+      let concatError = '';
+      concatFFmpeg.stderr.on('data', data => {
+        concatError += data.toString();
+      });
+      
+      concatFFmpeg.on('close', code => {
+        concatSpinner.stop();
+        
+        // Clean up temp files (preserve if debug mode)
+        if (debug.shouldPreserveTempFiles()) {
+          tempClips.forEach((clip, i) => {
+            debug.addTempFile(clip, `Paired clip ${i + 1}`);
+          });
+          debug.addTempFile(concatListPath, 'Concatenation list');
+        } else {
+          tempClips.forEach(clip => {
+            if (fs.existsSync(clip)) {
+              fs.unlinkSync(clip);
+            }
+          });
+          if (fs.existsSync(concatListPath)) {
+            fs.unlinkSync(concatListPath);
+          }
+        }
+        
+        if (code !== 0) {
+          console.log('❌ Concatenation failed');
+          console.log(`Error: ${concatError.substring(concatError.length - 500)}`);
+          reject(new Error('Failed to concatenate paired clips'));
+        } else {
+          console.log('✅ Video created successfully');
+          resolve(tempVideoPath);
+        }
+      });
+      
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+/**
  * Create video from mixed media (images and videos) with even timing
  */
 async function createVideoWithMediaFiles(mediaFiles, audioDuration, tempVideoPath) {
@@ -1794,6 +2290,10 @@ function generateFlowingSubtitles(words, outputPath, style) {
     const highlightColor = colorToASS(style.highlightColor || VIRAL_STYLE_SETTINGS['highlight'].highlightColor);
     const outlineColor = colorToASS(style.outlineColor);
     
+    // Shadow settings
+    const shadowDepth = style.shadowDepth || 0;
+    const shadowColor = style.shadowColor ? colorToASS(style.shadowColor) : '&H00000000';
+    
     // Build ASS header
     let assContent = `[Script Info]
 Title: Flowing Subtitles by YT-Machine
@@ -1805,8 +2305,8 @@ PlayResY: ${videoHeight}
     
     // Define two styles: Default (unhighlighted) and Highlight (currently spoken)
     assContent += `[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n`;
-    assContent += `Style: Default,${style.fontFamily},${style.fontSize},${primaryColor},${primaryColor},${outlineColor},&H00000000,${style.bold ? -1 : 0},${style.italic ? -1 : 0},0,0,100,100,0,0,1,${style.outlineWidth},0,${alignment},0,0,${marginV},1\n`;
-    assContent += `Style: Highlight,${style.fontFamily},${style.fontSize},${highlightColor},${highlightColor},${outlineColor},&H00000000,-1,${style.italic ? -1 : 0},0,0,100,100,0,0,1,${style.outlineWidth + 1},0,${alignment},0,0,${marginV},1\n\n`;
+    assContent += `Style: Default,${style.fontFamily},${style.fontSize},${primaryColor},${primaryColor},${outlineColor},${shadowColor},${style.bold ? -1 : 0},${style.italic ? -1 : 0},0,0,100,100,0,0,1,${style.outlineWidth},${shadowDepth},${alignment},0,0,${marginV},1\n`;
+    assContent += `Style: Highlight,${style.fontFamily},${style.fontSize},${highlightColor},${highlightColor},${outlineColor},${shadowColor},-1,${style.italic ? -1 : 0},0,0,100,100,0,0,1,${style.outlineWidth + 1},${shadowDepth},${alignment},0,0,${marginV},1\n\n`;
     
     assContent += `[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
     
@@ -2460,18 +2960,27 @@ function getCTAOverlayFilter(videoDuration, inputLabel = '[0:v]', ctaInputIndex 
 
 /**
  * Combine video with audio and optionally subtitles
+ * audioPath can be null if video already has audio (paired mode)
  */
 async function combineVideoAudioSubtitles(tempVideoPath, audioPath, subtitlePath, outputPath, audioDuration) {
   return new Promise((resolve, reject) => {
     const args = [
-      '-i', tempVideoPath,
-      '-i', audioPath
+      '-i', tempVideoPath
     ];
+    
+    // Add audio input if provided (null for paired mode where audio is already in video)
+    let audioInputIndex = -1;
+    if (audioPath) {
+      args.push('-i', audioPath);
+      audioInputIndex = 1;
+    }
     
     // Add CTA image as input if enabled
     const hasCTA = CONFIG.cta.enabled && CONFIG.cta.imagePath;
+    let ctaInputIndex = -1;
     if (hasCTA) {
       args.push('-i', CONFIG.cta.imagePath);
+      ctaInputIndex = audioPath ? 2 : 1;  // Depends on whether audio was added
     }
 
     // Get subtitle styling from CONFIG
@@ -2664,7 +3173,11 @@ async function combineVideoAudioSubtitles(tempVideoPath, audioPath, subtitlePath
       
       args.push('-filter_complex', complexFilter);
       args.push('-map', '[vout]');  // Map the final filtered video
-      args.push('-map', '1:a');     // Map audio from second input
+      if (audioPath) {
+        args.push('-map', '1:a');     // Map audio from second input (if provided)
+      } else {
+        args.push('-map', '0:a?');    // Use audio from video if no separate audio
+      }
     } else {
       // No CTA - use simple video filter
       if (videoFilters.length > 0) {
@@ -2672,9 +3185,11 @@ async function combineVideoAudioSubtitles(tempVideoPath, audioPath, subtitlePath
       }
     }
     
-    // Add audio fade effects (use configured values)
-    const audioFadeOutStart = Math.max(0, audioDuration - CONFIG.audio.voiceFadeOut);
-    args.push('-af', `afade=t=in:st=0:d=${CONFIG.audio.voiceFadeIn},afade=t=out:st=${audioFadeOutStart}:d=${CONFIG.audio.voiceFadeOut}`);
+    // Add audio fade effects only if we have separate audio (use configured values)
+    if (audioPath) {
+      const audioFadeOutStart = Math.max(0, audioDuration - CONFIG.audio.voiceFadeOut);
+      args.push('-af', `afade=t=in:st=0:d=${CONFIG.audio.voiceFadeIn},afade=t=out:st=${audioFadeOutStart}:d=${CONFIG.audio.voiceFadeOut}`);
+    }
 
     const encodingSettings = getEncodingSettings();
     args.push(
@@ -2732,6 +3247,12 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
   const totalStartTime = Date.now();
   
   try {
+    debug.step('Start video generation', {
+      skipPrompts,
+      hasVideoFolder: !!videoFolder,
+      hasChannelFolder: !!channelFolder
+    });
+    
     console.log('🚀 Starting video generation...\n');
     
     // Detect intro/outro from channel or video folders
@@ -2791,48 +3312,66 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
       throw new Error('No images or videos found in input folder');
     }
 
-    // Check for voiceover and background music
-    const voicePath = path.join(CONFIG.inputFolder, FILE_NAMES.VOICE);
+    // Check for background music
     const musicPath = path.join(CONFIG.inputFolder, FILE_NAMES.MUSIC);
     const backgroundMusicPath = path.join(CONFIG.inputFolder, FILE_NAMES.BACKGROUND_MUSIC);
+    const hasBackgroundMusic = fs.existsSync(musicPath) || fs.existsSync(backgroundMusicPath);
+    const actualMusicPath = fs.existsSync(musicPath) ? musicPath : backgroundMusicPath;
     
-    // Determine which audio file to use as voiceover
-    let audioPath;
+    // Detect clip mode: paired or single-audio
+    const clipMode = CONFIG.clips?.mode || 'auto';
+    let usePairedMode = false;
+    let pairedClips = null;
+    let audioPath = null;
+    let audioDuration = 0;
     
-    if (fs.existsSync(voicePath)) {
-      // Prefer voice.mp3 (batch mode standard)
-      audioPath = voicePath;
-    } else {
-      // Fallback to first audio file that's not background music
-      const audioFiles = allAudioFiles.filter(file => {
-        const basename = path.basename(file).toLowerCase();
-        return basename !== 'background_music.mp3' && basename !== 'music.mp3';
-      });
+    // Auto-detect or explicitly set paired mode
+    if (clipMode === 'paired' || (clipMode === 'auto' && detectPairedMode(allAudioFiles, mediaFiles))) {
+      // PAIRED MODE: Match audio1-image1, audio2-image2, etc.
+      usePairedMode = true;
+      pairedClips = await createPairedClips(allAudioFiles, mediaFiles);
       
-      if (audioFiles.length === 0) {
-        throw new Error('No voiceover audio file found (looking for voice.mp3 or other .mp3/.wav files)');
+      if (pairedClips.length === 0) {
+        throw new Error('Paired mode enabled but no matching audio-image pairs found. Use files like: audio1.mp3+image1.jpg, audio2.mp3+image2.jpg');
       }
       
-      audioPath = audioFiles[0];
+      // Calculate total duration
+      audioDuration = pairedClips.reduce((sum, clip) => sum + clip.duration, 0);
+      console.log(`   📊 Total duration: ${audioDuration.toFixed(2)} seconds`);
+      
+    } else {
+      // SINGLE-AUDIO MODE: One audio for all images (traditional mode)
+      const voicePath = path.join(CONFIG.inputFolder, FILE_NAMES.VOICE);
+      
+      if (fs.existsSync(voicePath)) {
+        audioPath = voicePath;
+      } else {
+        // Fallback to first audio file that's not background music
+        const audioFiles = allAudioFiles.filter(file => {
+          const basename = path.basename(file).toLowerCase();
+          return basename !== 'background_music.mp3' && basename !== 'music.mp3';
+        });
+        
+        if (audioFiles.length === 0) {
+          throw new Error('No voiceover audio file found (looking for voice.mp3 or other .mp3/.wav files)');
+        }
+        
+        audioPath = audioFiles[0];
+      }
+      
+      console.log(`✅ Found ${images.length} images${videos.length > 0 ? ` + ${videos.length} videos` : ''}`);
+      console.log(`✅ Found voiceover: ${path.basename(audioPath)}`);
+      
+      // Get audio duration
+      console.log('\n⏱️  Analyzing audio duration...');
+      audioDuration = await getAudioDuration(audioPath);
+      console.log(`✅ Audio duration: ${audioDuration.toFixed(2)} seconds`);
     }
-    
-    // Determine if we have background music
-    const hasBackgroundMusic = fs.existsSync(musicPath) || fs.existsSync(backgroundMusicPath);
-    
-    // Use music.mp3 if it exists, otherwise use background_music.mp3
-    const actualMusicPath = fs.existsSync(musicPath) ? musicPath : backgroundMusicPath;
-    console.log(`✅ Found ${images.length} images${videos.length > 0 ? ` + ${videos.length} videos` : ''}`);
-    console.log(`✅ Found voiceover: ${path.basename(audioPath)}`);
     
     if (hasBackgroundMusic) {
       console.log(`✅ Found background music: ${path.basename(actualMusicPath)}`);
     }
     console.log('');
-
-    // Get audio duration
-    console.log('⏱️  Analyzing audio duration...');
-    const audioDuration = await getAudioDuration(audioPath);
-    console.log(`✅ Audio duration: ${audioDuration.toFixed(2)} seconds\n`);
 
     // Prompt for audio configuration (only in interactive mode)
     if (!skipPrompts) {
@@ -2945,39 +3484,105 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
       introDelay = 4;  // Image intros are always 4 seconds
     }
     
-    // Mix background music if available, with intro delay if needed
-    let finalAudioPath = audioPath;
-    
-    if (hasBackgroundMusic) {
-      console.log('🎵 Processing background music...');
-      console.log(`   Voice: ${path.basename(audioPath)}`);
-      console.log(`   Music: ${path.basename(actualMusicPath)}`);
-      const mixedAudioPath = path.join(CONFIG.outputFolder, 'temp_audio_mixed.mp3');
-      finalAudioPath = await mixAudioWithBackgroundMusic(
-        audioPath,
-        actualMusicPath,
-        audioDuration,
-        mixedAudioPath,
-        introDelay  // Delay for intro
-      );
-      console.log('');
-    } else if (introDelay > 0) {
-      // No music but have image intro - delay voiceover
-      console.log('🎵 Processing audio for image intro...');
-      const delayedAudioPath = path.join(CONFIG.outputFolder, 'temp_audio_delayed.mp3');
-      finalAudioPath = await delayVoiceover(
-        audioPath,
-        audioDuration,
-        delayedAudioPath,
-        introDelay
-      );
-      console.log('');
-    }
-
-    // Create temporary video from media files (images + videos)
-    // Keep original duration - intro will be concatenated separately
+    // Create temporary video from media files
     const tempVideoPath = path.join(CONFIG.outputFolder, 'temp_video.mp4');
-    await createVideoWithMediaFiles(mediaFiles, audioDuration, tempVideoPath);
+    let finalAudioPath = null;
+    
+    if (usePairedMode) {
+      // PAIRED MODE: Each clip has its own audio already embedded
+      // Check if transitions are enabled
+      const transitionType = CONFIG.clips?.transition || 'none';
+      const transitionDuration = CONFIG.clips?.fadeBlackDuration || 0.3;
+      
+      debug.log('CONFIG', 'Paired mode transition settings', {
+        transition: transitionType,
+        duration: transitionDuration,
+        clipCount: pairedClips.length
+      });
+      
+      if (transitionType === 'fade-black') {
+        // Use transition version
+        await createVideoWithPairedClipsAndTransitions(pairedClips, tempVideoPath, transitionDuration);
+      } else {
+        // Use original non-transition version
+        await createVideoWithPairedClips(pairedClips, tempVideoPath);
+      }
+      
+      // For paired mode, extract audio from the video to add background music
+      if (hasBackgroundMusic) {
+        console.log('\n🎵 Processing background music...');
+        const extractedAudioPath = path.join(CONFIG.outputFolder, 'temp_extracted_audio.mp3');
+        
+        // Extract audio from paired video
+        await new Promise((resolve, reject) => {
+          const extractArgs = [
+            '-i', tempVideoPath,
+            '-vn',
+            '-acodec', 'libmp3lame',
+            '-b:a', '192k',
+            '-y',
+            extractedAudioPath
+          ];
+          
+          const extractFFmpeg = spawn('ffmpeg', extractArgs);
+          extractFFmpeg.on('close', code => {
+            if (code === 0) resolve();
+            else reject(new Error('Failed to extract audio'));
+          });
+        });
+        
+        const mixedAudioPath = path.join(CONFIG.outputFolder, 'temp_audio_mixed.mp3');
+        finalAudioPath = await mixAudioWithBackgroundMusic(
+          extractedAudioPath,
+          actualMusicPath,
+          audioDuration,
+          mixedAudioPath,
+          0  // No intro delay in paired mode for now
+        );
+        
+        // Clean up extracted audio
+        if (fs.existsSync(extractedAudioPath)) {
+          fs.unlinkSync(extractedAudioPath);
+        }
+        console.log('');
+      } else {
+        // No background music - video already has audio
+        finalAudioPath = null;
+      }
+      
+    } else {
+      // SINGLE-AUDIO MODE: Traditional mode with one audio for all images
+      await createVideoWithMediaFiles(mediaFiles, audioDuration, tempVideoPath);
+      
+      // Mix background music if available, with intro delay if needed
+      finalAudioPath = audioPath;
+      
+      if (hasBackgroundMusic) {
+        console.log('🎵 Processing background music...');
+        console.log(`   Voice: ${path.basename(audioPath)}`);
+        console.log(`   Music: ${path.basename(actualMusicPath)}`);
+        const mixedAudioPath = path.join(CONFIG.outputFolder, 'temp_audio_mixed.mp3');
+        finalAudioPath = await mixAudioWithBackgroundMusic(
+          audioPath,
+          actualMusicPath,
+          audioDuration,
+          mixedAudioPath,
+          introDelay  // Delay for intro
+        );
+        console.log('');
+      } else if (introDelay > 0) {
+        // No music but have image intro - delay voiceover
+        console.log('🎵 Processing audio for image intro...');
+        const delayedAudioPath = path.join(CONFIG.outputFolder, 'temp_audio_delayed.mp3');
+        finalAudioPath = await delayVoiceover(
+          audioPath,
+          audioDuration,
+          delayedAudioPath,
+          introDelay
+        );
+        console.log('');
+      }
+    }
 
     // Show subtitle status
     if (fs.existsSync(subtitlePath)) {
@@ -2994,13 +3599,25 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
     // Calculate actual audio duration (includes intro delay if present)
     const actualAudioDuration = audioDuration + introDelay;
     
-    await combineVideoAudioSubtitles(
-      tempVideoPath,
-      finalAudioPath,
-      subtitlePath,
-      tempMainVideo,
-      actualAudioDuration  // Use actual duration including intro delay
-    );
+    if (usePairedMode && !finalAudioPath) {
+      // Paired mode without background music - video already has audio, just add subtitles
+      await combineVideoAudioSubtitles(
+        tempVideoPath,
+        null,  // No separate audio needed
+        subtitlePath,
+        tempMainVideo,
+        audioDuration
+      );
+    } else {
+      // Single-audio mode OR paired mode with background music
+      await combineVideoAudioSubtitles(
+        tempVideoPath,
+        finalAudioPath,
+        subtitlePath,
+        tempMainVideo,
+        actualAudioDuration  // Use actual duration including intro delay
+      );
+    }
 
     // Add intro/outro if detected
     const videoWithIntroOutro = path.join(CONFIG.outputFolder, `temp_with_intro_outro_${timestamp}.mp4`);
@@ -3073,6 +3690,12 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
     // Get file size of first output
     const stats = fs.statSync(outputFiles[0].path);
     const fileSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+    
+    // Record output files in debug
+    outputFiles.forEach(file => {
+      debug.addOutputFile(file.path, { format: file.format });
+    });
+    debug.step('Video generation completed successfully');
 
     logger.section('🎉 VIDEO GENERATION COMPLETE! 🎉');
     
@@ -3128,11 +3751,18 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
     
     console.log('\n' + '='.repeat(60) + '\n');
     
+    // Generate debug receipt and summary
+    debug.setConfig(CONFIG);
+    debug.saveReceipt(CONFIG.outputFolder);
+    debug.printSummary();
+    
     // Create a copy as final_video.mp4 for batch processing compatibility
     const finalVideoPath = path.join(CONFIG.outputFolder, 'final_video.mp4');
     fs.copyFileSync(outputFiles[0].path, finalVideoPath);
 
   } catch (error) {
+    debug.addError(error, 'Video generation failed');
+    debug.saveReceipt(CONFIG.outputFolder);
     console.error('\n❌ Error:', error.message);
     console.error('\n💡 Tip: Check that ffmpeg is installed and all input files are valid\n');
     process.exit(1);
@@ -3332,16 +3962,19 @@ async function mainMenu() {
       switch (choice) {
         case '1':
           console.log('\n✅ Interactive Mode\n');
+          debug.setMode('interactive');
           await generateVideo();
           break;
         
         case '2':
           console.log('\n✅ Batch Processing - Channel Mode\n');
+          debug.setMode('batch-channel');
           await processChannelBatch();
           break;
         
         case '3':
           console.log('\n✅ Batch Processing - Legacy Mode\n');
+          debug.setMode('batch-legacy');
           await processBatchProjects();
           break;
         
