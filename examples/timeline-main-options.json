@@ -1,0 +1,103 @@
+{
+  "name": "Timeline - Main Segment Options",
+  "description": "Examples of different ways to use the 'main' segment type",
+  
+  "examples": {
+    "main_with_specific_video": {
+      "comment": "Use a specific video file as main content",
+      "timeline": {
+        "segments": [
+          {
+            "type": "scene",
+            "path": "scenes/intro.jpg",
+            "duration": 3,
+            "name": "intro"
+          },
+          {
+            "type": "main",
+            "path": "videos/main-content.mp4",
+            "name": "content"
+          },
+          {
+            "type": "outro",
+            "path": "outro.mp4"
+          }
+        ]
+      }
+    },
+    
+    "main_with_specific_image": {
+      "comment": "Use a specific image as main content with duration",
+      "timeline": {
+        "segments": [
+          {
+            "type": "scene",
+            "path": "scenes/intro.mp4"
+          },
+          {
+            "type": "main",
+            "path": "images/featured.jpg",
+            "duration": 10,
+            "name": "content"
+          },
+          {
+            "type": "outro",
+            "path": "outro.mp4"
+          }
+        ]
+      }
+    },
+    
+    "main_with_random_generation": {
+      "comment": "Generate main content from random images in input folder",
+      "timeline": {
+        "segments": [
+          {
+            "type": "scene",
+            "path": "scenes/title.jpg",
+            "duration": 3
+          },
+          {
+            "type": "main",
+            "name": "content"
+          },
+          {
+            "type": "scene",
+            "path": "scenes/cta.jpg",
+            "duration": 5
+          }
+        ],
+        "audio": {
+          "voice": {
+            "path": "voice.mp3"
+          },
+          "music": {
+            "path": "music.mp3",
+            "volume": 0.2
+          }
+        }
+      }
+    },
+    
+    "main_with_duration_constraint": {
+      "comment": "Generate main from random images but limit to specific duration",
+      "timeline": {
+        "segments": [
+          {
+            "type": "intro",
+            "path": "intro.mp4"
+          },
+          {
+            "type": "main",
+            "duration": 60,
+            "name": "content"
+          },
+          {
+            "type": "outro",
+            "path": "outro.mp4"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -25,12 +25,16 @@ import { convertSRTtoASS as convertSRTtoASSExternal } from './subtitles/convert.
 import { buildForceStyle } from './subtitles/styler.js';
 import { logger } from './utils/logger.js';
 import * as debug from './debug/logger.js';
+import { isFeatureEnabled, ProFeatures, displayProStatus } from './pro/index.js';
 
 // Load environment variables
 dotenv.config();
 
 // Initialize debug mode early
 debug.init();
+
+// Log pro features status on startup
+displayProStatus();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -279,21 +283,33 @@ function getEncodingSettings() {
 }
 
 /**
- * Get all files in a directory with specific extensions
+ * Get all files in a directory with specific extensions (recursive)
  */
 function getFilesByExtension(dir, extensions) {
   if (!fs.existsSync(dir)) {
     throw new Error(`Directory not found: ${dir}`);
   }
 
+  let results = [];
   const files = fs.readdirSync(dir);
-  return files
-    .filter(file => {
+  
+  for (const file of files) {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    
+    if (stat.isDirectory()) {
+      // Recursively scan subdirectories
+      results = results.concat(getFilesByExtension(filePath, extensions));
+    } else {
+      // Check if file has matching extension
       const ext = path.extname(file).toLowerCase();
-      return extensions.includes(ext);
-    })
-    .map(file => path.join(dir, file))
-    .sort();
+      if (extensions.includes(ext)) {
+        results.push(filePath);
+      }
+    }
+  }
+  
+  return results.sort();
 }
 
 /**
@@ -480,8 +496,16 @@ function loadChannelConfig(channelPath) {
   }
   
   try {
-    const channelConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const rawConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    
+    // Validate and apply presets if specified
+    const validation = validateChannelConfig(rawConfig);
+    const channelConfig = validation.config || rawConfig; // Use preset-applied config
     const defaults = channelConfig.defaults || {};
+    
+    // Show validation results
+    validation.errors.forEach(e => console.log(`   ❌ ${e}`));
+    validation.warnings.forEach(w => console.log(`   ⚠️  ${w}`));
     
     // Apply channel defaults to CONFIG
     if (defaults.aspectRatio) {
@@ -517,9 +541,7 @@ function loadChannelConfig(channelPath) {
       CONFIG.subtitleLanguage = defaults.language;
     }
     
-    const { warnings, errors } = validateChannelConfig(channelConfig);
-    errors.forEach(e => console.log(`   ❌ Channel config error: ${e}`));
-    warnings.forEach(w => console.log(`   ⚠️  Channel config: ${w}`));
+    // Validation already done above
     return channelConfig;
   } catch (error) {
     throw new Error(`Failed to parse channel config: ${error.message}`);
@@ -951,6 +973,9 @@ function applyProjectConfig(projectConfig) {
     if (dimensions) {
       CONFIG.videoWidth = dimensions.width;
       CONFIG.videoHeight = dimensions.height;
+      console.log(`   📐 Config dimensions set: ${CONFIG.videoWidth}x${CONFIG.videoHeight} (${CONFIG.aspectRatio})`);
+    } else {
+      console.warn(`   ⚠️  No dimensions found for aspect ratio: ${projectConfig.aspectRatio}`);
     }
   }
   
@@ -2093,7 +2118,12 @@ async function createVideoWithPairedClips(pairedClips, tempVideoPath) {
  * Create video from mixed media (images and videos) with even timing
  */
 async function createVideoWithMediaFiles(mediaFiles, audioDuration, tempVideoPath) {
+  console.log(`\n📊 createVideoWithMediaFiles() called:`);
+  console.log(`   📥 Input duration: ${audioDuration.toFixed(2)}s`);
+  console.log(`   📥 Number of files: ${mediaFiles.length}`);
+  
   const clipDuration = audioDuration / mediaFiles.length;
+  console.log(`   🧮 Clip duration: ${audioDuration.toFixed(2)} ÷ ${mediaFiles.length} = ${clipDuration.toFixed(2)}s`);
   
   // Count images and videos
   const imageCount = mediaFiles.filter(f => isImageFile(f)).length;
@@ -2108,6 +2138,7 @@ async function createVideoWithMediaFiles(mediaFiles, audioDuration, tempVideoPat
     console.log(`   ${imageCount} images`);
   }
   console.log(`⏱️  Each clip will display for ${clipDuration.toFixed(2)} seconds`);
+  console.log(`   📐 Expected total duration: ${(clipDuration * mediaFiles.length).toFixed(2)}s`);
   
   if (CONFIG.animationEffect !== 'static' && imageCount > 0) {
     console.log(`🎨 Applying ${CONFIG.animationEffect} animation to images`);
@@ -3282,16 +3313,75 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
       }
     }
 
+    // Check if config.json exists in input folder and load timeline from it
+    const configPath = path.join(CONFIG.inputFolder, 'config.json');
+    let projectConfig = null;
+    
+    if (fs.existsSync(configPath)) {
+      try {
+        projectConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        
+        // Load timeline if present
+        if (projectConfig.timeline) {
+          CONFIG.timeline = projectConfig.timeline;
+          console.log('✅ Timeline loaded from config.json\n');
+          ProFeatures.Timeline.displayTimelineSummary(projectConfig.timeline);
+        }
+        
+        // Apply other config settings
+        if (projectConfig.aspectRatio) {
+          CONFIG.aspectRatio = projectConfig.aspectRatio;
+          // CRITICAL: Also set the dimensions from aspect ratio
+          const dimensions = CONFIG.aspectRatios[projectConfig.aspectRatio];
+          if (dimensions) {
+            CONFIG.videoWidth = dimensions.width;
+            CONFIG.videoHeight = dimensions.height;
+            console.log(`   📐 Dimensions set from config: ${CONFIG.videoWidth}x${CONFIG.videoHeight} (${CONFIG.aspectRatio})\n`);
+          } else {
+            console.warn(`   ⚠️  Unknown aspect ratio: ${projectConfig.aspectRatio}\n`);
+          }
+        }
+        if (projectConfig.animation) {
+          CONFIG.animationEffect = projectConfig.animation;
+        }
+        if (projectConfig.qualityMode) {
+          CONFIG.qualityMode = projectConfig.qualityMode;
+        }
+      } catch (error) {
+        console.log(`⚠️  Could not load config.json: ${error.message}\n`);
+      }
+    }
+    
     // Only prompt if not in batch mode (when config is already set)
     if (!skipPrompts) {
-      // Prompt user for aspect ratio
-      await promptAspectRatio();
+      // PRO: Timeline prompt (only if not already configured)
+      if (isFeatureEnabled('TIMELINE') && !CONFIG.timeline) {
+        const timelineConfig = await ProFeatures.Timeline.promptTimeline();
+        if (timelineConfig) {
+          CONFIG.timeline = timelineConfig;
+        }
+      }
       
-      // Prompt user for animation effect
-      await promptAnimationEffect();
+      // Prompt user for aspect ratio (skip if already set in config)
+      if (!projectConfig || !projectConfig.aspectRatio) {
+        await promptAspectRatio();
+      } else {
+        console.log(`✅ Using aspect ratio from config: ${CONFIG.aspectRatio}`);
+      }
       
-      // Prompt user for quality mode
-      await promptQualityMode();
+      // Prompt user for animation effect (skip if set in config)
+      if (!projectConfig || !projectConfig.animation) {
+        await promptAnimationEffect();
+      } else {
+        console.log(`✅ Using animation from config: ${CONFIG.animationEffect}`);
+      }
+      
+      // Prompt user for quality mode (skip if set in config)
+      if (!projectConfig || !projectConfig.qualityMode) {
+        await promptQualityMode();
+      } else {
+        console.log(`✅ Using quality mode from config: ${CONFIG.qualityMode}`);
+      }
     }
 
     // Ensure output folder exists
@@ -3301,14 +3391,55 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
 
     // Get media files (images and videos) and audio
     console.log('📂 Scanning input folder...');
-    const images = getFilesByExtension(CONFIG.inputFolder, CONFIG.imageFormats);
-    const videos = getFilesByExtension(CONFIG.inputFolder, CONFIG.videoFormats);
+    let images = getFilesByExtension(CONFIG.inputFolder, CONFIG.imageFormats);
+    let videos = getFilesByExtension(CONFIG.inputFolder, CONFIG.videoFormats);
     const allAudioFiles = getFilesByExtension(CONFIG.inputFolder, CONFIG.audioFormats);
+
+    // If using timeline, exclude scenes/outro/intro from main content media files
+    // Store these in outer scope so callback can access them
+    let scenesImages = [];
+    let scenesVideos = [];
+    
+    if (isFeatureEnabled('TIMELINE') && ProFeatures.Timeline.hasTimeline(CONFIG)) {
+      const scenesFolder = path.join(CONFIG.inputFolder, 'scenes');
+      scenesImages = images.filter(img => img.startsWith(scenesFolder));
+      scenesVideos = videos.filter(vid => vid.startsWith(scenesFolder));
+      
+      images = images.filter(img => !img.startsWith(scenesFolder));
+      videos = videos.filter(vid => !vid.startsWith(scenesFolder));
+      
+      // Also exclude intro.mp4 and outro.mp4 from root
+      const introPath = path.join(CONFIG.inputFolder, 'intro.mp4');
+      const outroPath = path.join(CONFIG.inputFolder, 'outro.mp4');
+      videos = videos.filter(vid => vid !== introPath && vid !== outroPath);
+      
+      console.log(`   📝 Timeline mode: Excluded scenes/ folder and intro/outro from main content`);
+      console.log(`   📊 Available for main content: ${images.length} images + ${videos.length} videos`);
+      console.log(`   📁 Scenes folder has: ${scenesImages.length} images`);
+      
+      // Check if we have any images for main content
+      const hasMainContent = images.length > 0 || videos.length > 0;
+      const hasChannelPool = CONFIG.randomImages && CONFIG.useChannelPool;
+      
+      console.log(`   🔍 Fallback check: hasMainContent=${hasMainContent}, hasChannelPool=${hasChannelPool}, scenesImages=${scenesImages.length}`);
+      
+      // If no main content and no channel pool, use scenes as fallback
+      if (!hasMainContent && !hasChannelPool && scenesImages.length > 0) {
+        console.log(`   💡 No images for main content and no channel pool - using scenes/ as fallback`);
+        images = scenesImages;
+        videos = scenesVideos;
+      }
+    }
 
     // Combine and sort media files (images + videos) by filename
     const mediaFiles = [...images, ...videos].sort();
     
-    if (mediaFiles.length === 0) {
+    console.log(`   📦 mediaFiles after combining: ${mediaFiles.length} files`);
+    if (mediaFiles.length > 0) {
+      console.log(`   📂 Files: ${mediaFiles.map(f => path.basename(f)).join(', ')}`);
+    }
+    
+    if (mediaFiles.length === 0 && !(isFeatureEnabled('TIMELINE') && ProFeatures.Timeline.hasTimeline(CONFIG))) {
       throw new Error('No images or videos found in input folder');
     }
 
@@ -3552,7 +3683,42 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
       
     } else {
       // SINGLE-AUDIO MODE: Traditional mode with one audio for all images
-      await createVideoWithMediaFiles(mediaFiles, audioDuration, tempVideoPath);
+      if (mediaFiles.length > 0) {
+        console.log(`\n📹 Creating initial main video: ${mediaFiles.length} files, ${audioDuration.toFixed(1)}s duration`);
+        await createVideoWithMediaFiles(mediaFiles, audioDuration, tempVideoPath);
+        console.log(`✅ Initial main video created: ${tempVideoPath}\n`);
+      } else if (isFeatureEnabled('TIMELINE') && ProFeatures.Timeline.hasTimeline(CONFIG)) {
+        // Timeline mode with all content in scenes - create placeholder for main
+        console.log('\n📊 Creating video with 0 clips (all content in timeline scenes)');
+        console.log('   Main content will be empty or use timeline\'s main segment only\n');
+        
+        // Create a minimal black video as placeholder
+        await new Promise((resolve, reject) => {
+          const args = [
+            '-f', 'lavfi',
+            '-i', `color=c=black:s=${CONFIG.videoWidth}x${CONFIG.videoHeight}:d=0.1`,
+            '-f', 'lavfi',
+            '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100:duration=0.1',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '23',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-shortest',
+            '-y',
+            tempVideoPath
+          ];
+          
+          const ffmpeg = spawn('ffmpeg', args);
+          ffmpeg.on('close', code => {
+            if (code === 0) resolve();
+            else reject(new Error('Failed to create placeholder video'));
+          });
+        });
+      } else {
+        throw new Error('No media files found for main content');
+      }
       
       // Mix background music if available, with intro delay if needed
       finalAudioPath = audioPath;
@@ -3619,9 +3785,182 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
       );
     }
 
-    // Add intro/outro if detected
-    const videoWithIntroOutro = path.join(CONFIG.outputFolder, `temp_with_intro_outro_${timestamp}.mp4`);
-    await addIntroOutro(tempMainVideo, videoWithIntroOutro, introOutroFiles);
+    // PRO: Check if timeline is configured
+    let finalVideo;
+    if (isFeatureEnabled('TIMELINE') && ProFeatures.Timeline.hasTimeline(CONFIG)) {
+      console.log('\n🎬 Building video with Timeline System...\n');
+      
+      // Display timeline summary
+      const timeline = ProFeatures.Timeline.getTimeline(CONFIG);
+      ProFeatures.Timeline.displayTimelineSummary(timeline);
+      
+      // Check if timeline has its own audio configuration
+      const hasTimelineAudio = timeline.audio && (timeline.audio.voice || timeline.audio.music);
+      
+      if (hasTimelineAudio) {
+        console.log('   📝 Timeline has audio configuration - audio will be handled by timeline\n');
+      }
+      
+      // Build timeline with main content callback
+      const mainContentCallback = async (calculatedDuration) => {
+        try {
+          console.log(`\n   ═══════════════════════════════════════════════`);
+          console.log(`   🎬 MAIN CONTENT CALLBACK INVOKED`);
+          console.log(`   ═══════════════════════════════════════════════`);
+          console.log(`   📥 Received calculatedDuration: ${calculatedDuration ? calculatedDuration.toFixed(2) + 's' : 'undefined'}`);
+          
+          // If timeline calculated a duration, we need to generate content with that specific duration
+          if (calculatedDuration) {
+            console.log(`   ✅ Will regenerate main with duration: ${calculatedDuration.toFixed(2)}s\n`);
+            
+            // Use scene images as fallback if mediaFiles is empty
+            let actualMediaFiles = mediaFiles;
+            if (mediaFiles.length === 0 && scenesImages.length > 0) {
+              console.log(`   💡 Using scenes/ folder for main content (${scenesImages.length} images)`);
+              actualMediaFiles = [...scenesImages, ...scenesVideos].sort();
+            }
+            
+            console.log(`   📊 Available media files for main: ${actualMediaFiles.length}`);
+          
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+          const tempMainWithDuration = path.join(CONFIG.outputFolder, `temp_main_calculated_${timestamp}.mp4`);
+          
+          if (actualMediaFiles.length === 0) {
+            console.log(`   ⚠️  No media files - creating black placeholder`);
+            // No media files - create placeholder with calculated duration
+            await new Promise((resolve, reject) => {
+              const args = [
+                '-f', 'lavfi',
+                '-i', `color=c=black:s=${CONFIG.videoWidth}x${CONFIG.videoHeight}:d=${calculatedDuration}`,
+                '-f', 'lavfi',
+                '-i', `anullsrc=channel_layout=stereo:sample_rate=44100:duration=${calculatedDuration}`,
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-crf', '23',
+                '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-shortest',
+                '-y',
+                tempMainWithDuration
+              ];
+              
+              const ffmpeg = spawn('ffmpeg', args);
+              ffmpeg.on('close', code => {
+                if (code === 0) resolve();
+                else reject(new Error('Failed to create main placeholder with calculated duration'));
+              });
+            });
+          } else {
+            // Has media files - recreate video with calculated duration
+            console.log(`   ✅ Regenerating video with ${actualMediaFiles.length} media files`);
+            const tempVideoWithDuration = path.join(CONFIG.outputFolder, `temp_video_calculated_${timestamp}.mp4`);
+            await createVideoWithMediaFiles(actualMediaFiles, calculatedDuration, tempVideoWithDuration);
+            
+            // Combine with audio and subtitles if not using timeline audio
+            if (!hasTimelineAudio && finalAudioPath) {
+              await combineVideoAudioSubtitles(
+                tempVideoWithDuration,
+                finalAudioPath,
+                subtitlePath,
+                tempMainWithDuration,
+                calculatedDuration
+              );
+            } else {
+              // Timeline handles both audio AND subtitles - just copy video without adding anything
+              console.log(`   ℹ️  Timeline will handle audio and subtitles - copying video only\n`);
+              await new Promise((resolve, reject) => {
+                const ffmpeg = spawn('ffmpeg', ['-i', tempVideoWithDuration, '-c', 'copy', '-y', tempMainWithDuration]);
+                ffmpeg.on('close', code => code === 0 ? resolve() : reject(new Error('Failed to copy video')));
+              });
+            }
+          }
+          
+          console.log(`   ✅ Returning calculated main video: ${path.basename(tempMainWithDuration)}\n`);
+          return tempMainWithDuration;
+        }
+        
+        // No calculated duration - use pre-generated tempMainVideo
+        console.log(`   ℹ️  Returning pre-generated main video: ${path.basename(tempMainVideo)}\n`);
+        return tempMainVideo;
+      } catch (error) {
+        console.error('❌ Error in main content callback:', error.message);
+        throw error;
+      }
+    };
+      
+      const timelineOutput = await ProFeatures.Timeline.buildTimeline(
+        timeline,
+        mainContentCallback,
+        videoFolder || CONFIG.inputFolder,
+        CONFIG.outputFolder,
+        CONFIG,  // Pass CONFIG for aspect ratio and other settings
+        subtitlePath  // Pass subtitle path for timeline
+      );
+      
+      finalVideo = timelineOutput;
+    } else {
+      // Standard: Add intro/outro if detected
+      const videoWithIntroOutro = path.join(CONFIG.outputFolder, `temp_with_intro_outro_${timestamp}.mp4`);
+      await addIntroOutro(tempMainVideo, videoWithIntroOutro, introOutroFiles);
+      finalVideo = videoWithIntroOutro;
+    }
+    
+    // PRO: Multi-Language Translation (if enabled)
+    if (isFeatureEnabled('TRANSLATIONS') && ProFeatures.Translations) {
+      const translationConfig = projectConfig?.translations || CONFIG.translations;
+      
+      if (translationConfig?.enabled && translationConfig?.languages?.length > 0) {
+        console.log('\n🌍 Processing Multi-Language Translations...\n');
+        
+        try {
+          // Check if API is configured
+          const apiStatus = await ProFeatures.Translations.checkDeepLConfig();
+          if (!apiStatus.configured) {
+            console.log(`   ⚠️  ${apiStatus.message}`);
+            console.log('   Skipping translations...\n');
+          } else {
+            // Only translate if we have subtitles
+            if (subtitlePath && fs.existsSync(subtitlePath)) {
+              // Create translations folder
+              const translationsFolder = translationConfig.outputFolder 
+                || path.join(CONFIG.outputFolder, 'translations');
+              
+              if (!fs.existsSync(translationsFolder)) {
+                fs.mkdirSync(translationsFolder, { recursive: true });
+              }
+              
+              // Translate to all target languages
+              const results = await ProFeatures.Translations.translateToMultipleLanguages(
+                subtitlePath,
+                translationConfig.languages,
+                translationsFolder,
+                {
+                  sourceLang: translationConfig.sourceLang || 'EN',
+                  nameTemplate: translationConfig.nameTemplate || 'subtitles_{lang}.srt'
+                }
+              );
+              
+              // Show summary
+              const successful = results.filter(r => r.success);
+              if (successful.length > 0) {
+                console.log('   📁 Translated subtitle files:');
+                const supportedLangs = ProFeatures.Translations.getSupportedLanguages();
+                successful.forEach(r => {
+                  console.log(`      • ${path.basename(r.path)} (${supportedLangs[r.language]})`);
+                });
+                console.log('');
+              }
+            } else {
+              console.log('   ⚠️  No subtitle file found, skipping translations...\n');
+            }
+          }
+        } catch (error) {
+          console.error(`   ❌ Translation error: ${error.message}`);
+          console.log('   Continuing without translations...\n');
+        }
+      }
+    }
     
     // Multi-format export
     const outputFiles = [];
@@ -3630,7 +3969,7 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
       // Single format - just rename to final output
       const formatName = CONFIG.exportFormats.outputNames[CONFIG.exportFormats.formats[0]];
       const outputPath = path.join(CONFIG.outputFolder, `video_${formatName}_${timestamp}.mp4`);
-      fs.renameSync(videoWithIntroOutro, outputPath);
+      fs.renameSync(finalVideo, outputPath);
       outputFiles.push({ path: outputPath, format: CONFIG.exportFormats.formats[0] });
     } else {
       // Multiple formats - convert each
@@ -3642,7 +3981,7 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
         
         if (format === 'original' || format === CONFIG.aspectRatio || (CONFIG.useOriginalSize && format === 'original')) {
           // Original format or native format - just copy, no conversion
-          fs.copyFileSync(videoWithIntroOutro, outputPath);
+          fs.copyFileSync(finalVideo, outputPath);
           if (format === 'original') {
             console.log(`✅ Original size - no conversion (${CONFIG.useOriginalSize ? 'custom dimensions' : CONFIG.aspectRatio})`);
           } else {
@@ -3650,19 +3989,25 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
           }
         } else {
           // Need to convert to different aspect ratio
-          await convertToAspectRatio(videoWithIntroOutro, outputPath, format);
+          await convertToAspectRatio(finalVideo, outputPath, format);
         }
         
         outputFiles.push({ path: outputPath, format });
       }
       
-      // Clean up the temp file with intro/outro
-      fs.unlinkSync(videoWithIntroOutro);
+      // Clean up the temp final video
+      if (fs.existsSync(finalVideo)) {
+        fs.unlinkSync(finalVideo);
+      }
     }
 
     // Clean up temp files
-    fs.unlinkSync(tempVideoPath);
-    fs.unlinkSync(tempMainVideo);
+    if (fs.existsSync(tempVideoPath)) {
+      fs.unlinkSync(tempVideoPath);
+    }
+    if (fs.existsSync(tempMainVideo)) {
+      fs.unlinkSync(tempMainVideo);
+    }
     
     // Clean up mixed audio if it was created
     const mixedAudioPath = path.join(CONFIG.outputFolder, 'temp_audio_mixed.mp3');
@@ -3717,12 +4062,35 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
     console.log(`⏱️  Total Time: ${totalMinutes}:${totalSeconds.toString().padStart(2, '0')}`);
     console.log(`\n✨ Settings:`);
     console.log(`   • Aspect Ratio: ${CONFIG.useOriginalSize ? 'Original Size' : CONFIG.aspectRatio}`);
-    console.log(`   • Animation: ${CONFIG.animationEffect}`);
-    if (videos.length > 0) {
-      console.log(`   • Media: ${images.length} images + ${videos.length} videos (${mediaFiles.length} total)`);
+    
+    // Show different stats for timeline vs regular videos
+    if (isFeatureEnabled('TIMELINE') && ProFeatures.Timeline.hasTimeline(CONFIG)) {
+      const timeline = ProFeatures.Timeline.getTimeline(CONFIG);
+      const segmentCounts = {
+        scene: timeline.segments.filter(s => s.type === 'scene').length,
+        intro: timeline.segments.filter(s => s.type === 'intro').length,
+        main: timeline.segments.filter(s => s.type === 'main').length,
+        outro: timeline.segments.filter(s => s.type === 'outro').length
+      };
+      
+      console.log(`   • Timeline: ${timeline.segments.length} segments`);
+      const parts = [];
+      if (segmentCounts.intro > 0) parts.push(`${segmentCounts.intro} intro`);
+      if (segmentCounts.scene > 0) parts.push(`${segmentCounts.scene} scene${segmentCounts.scene > 1 ? 's' : ''}`);
+      if (segmentCounts.main > 0) parts.push(`${segmentCounts.main} main`);
+      if (segmentCounts.outro > 0) parts.push(`${segmentCounts.outro} outro`);
+      if (parts.length > 0) {
+        console.log(`             (${parts.join(', ')})`);
+      }
     } else {
-      console.log(`   • Images: ${images.length}`);
+      console.log(`   • Animation: ${CONFIG.animationEffect}`);
+      if (videos.length > 0) {
+        console.log(`   • Media: ${images.length} images + ${videos.length} videos (${mediaFiles.length} total)`);
+      } else {
+        console.log(`   • Images: ${images.length}`);
+      }
     }
+    
     console.log(`   • Duration: ${audioDuration.toFixed(1)}s`);
     
     // Subtitle info

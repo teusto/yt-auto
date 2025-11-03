@@ -1,0 +1,9 @@
+{
+  "name": "Simple Channel",
+  "defaults": {
+    "aspectRatio": "9:16",
+    "subtitle": {
+      "style": "bold"
+    }
+  }
+}

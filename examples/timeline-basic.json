@@ -1,0 +1,11 @@
+{
+  "name": "Video with Timeline - Basic",
+  "description": "Simple intro → main → outro structure",
+  "timeline": {
+    "segments": [
+      { "type": "intro", "path": "intro.mp4" },
+      { "type": "main" },
+      { "type": "outro", "path": "outro.mp4" }
+    ]
+  }
+}

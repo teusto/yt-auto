@@ -1,0 +1,42 @@
+{
+  "name": "Video with Timeline - Advanced",
+  "description": "Complete timeline with custom scenes",
+  "aspectRatio": "9:16",
+  "timeline": {
+    "segments": [
+      {
+        "type": "scene",
+        "path": "scenes/opening.mp4",
+        "name": "Opening Scene",
+        "transition": "fade-black",
+        "transitionDuration": 1.0
+      },
+      {
+        "type": "scene",
+        "path": "scenes/title-card.jpg",
+        "name": "Title Card",
+        "duration": 3,
+        "audio": "intro-music.mp3"
+      },
+      {
+        "type": "intro",
+        "path": "intro.mp4"
+      },
+      {
+        "type": "main"
+      },
+      {
+        "type": "scene",
+        "path": "scenes/cta.mp4",
+        "name": "Subscribe Prompt"
+      },
+      {
+        "type": "outro",
+        "path": "outro.mp4"
+      }
+    ]
+  },
+  "subtitle": {
+    "style": "bold"
+  }
+}

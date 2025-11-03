@@ -1,0 +1,15 @@
+{
+  "preset": "youtube-shorts",
+  "name": "My Custom Shorts Channel",
+  "description": "Shorts with custom styling",
+  "customizations": {
+    "subtitle": {
+      "fontSize": 64,
+      "style": "shadow"
+    },
+    "randomImages": 12,
+    "clips": {
+      "fadeBlackDuration": 0.5
+    }
+  }
+}

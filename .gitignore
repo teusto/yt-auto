@@ -15,3 +15,6 @@ input/*
 !input/.gitkeep
 channels/*
 !channels/README.md
+.image-pool-history.json
+.music-pool-history.json
+

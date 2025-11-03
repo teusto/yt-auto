@@ -1,81 +1,104 @@
-import { VIDEO_DIMENSIONS, SUBTITLE_ALIGNMENT, QUALITY_MODES } from './constants.js';
+/**
+ * Config Validators
+ * Uses enhanced validation with schema-based rules
+ */
 
+import { 
+  validateChannelConfig as enhancedValidateChannel,
+  validateProjectConfig as enhancedValidateProject,
+  applyPreset,
+  listPresets,
+  generateExampleConfig
+} from './enhanced-validator.js';
+import * as debug from '../debug/logger.js';
+
+/**
+ * Validate channel config with enhanced validation
+ */
 export function validateChannelConfig(channelConfig) {
-  const warnings = [];
-  const errors = [];
-
-  if (!channelConfig || typeof channelConfig !== 'object') {
-    errors.push('Channel config is missing or invalid JSON.');
-    return { warnings, errors };
+  debug.step('Validating channel config');
+  
+  // Apply preset if specified
+  let config = channelConfig;
+  if (channelConfig.preset) {
+    config = applyPreset(channelConfig);
   }
-
-  const d = channelConfig.defaults || {};
-
-  // Aspect ratio
-  if (d.aspectRatio && !VIDEO_DIMENSIONS[d.aspectRatio]) {
-    warnings.push(`Unknown aspectRatio '${d.aspectRatio}'. Expected one of: ${Object.keys(VIDEO_DIMENSIONS).join(', ')}`);
+  
+  // Run enhanced validation
+  const result = enhancedValidateChannel(config);
+  
+  // Log to debug
+  if (result.hasIssues()) {
+    debug.log('VALIDATION', 'Channel config issues found', {
+      errors: result.errors.length,
+      warnings: result.warnings.length
+    });
   }
-
-  // FPS
-  if (d.fps !== undefined && (typeof d.fps !== 'number' || d.fps <= 0)) {
-    warnings.push('defaults.fps should be a positive number.');
-  }
-
-  // Quality mode
-  if (d.qualityMode && ![QUALITY_MODES.DRAFT, QUALITY_MODES.HIGH].includes(d.qualityMode)) {
-    warnings.push(`defaults.qualityMode '${d.qualityMode}' is not recognized. Use '${QUALITY_MODES.DRAFT}' or '${QUALITY_MODES.HIGH}'.`);
-  }
-
-  // Subtitle alignment
-  if (d.subtitle && d.subtitle.alignment !== undefined) {
-    const validAlignments = new Set(Object.values(SUBTITLE_ALIGNMENT));
-    if (!validAlignments.has(d.subtitle.alignment)) {
-      warnings.push(`defaults.subtitle.alignment '${d.subtitle.alignment}' is not valid. Use one of: ${[...validAlignments].join(', ')}`);
-    }
-  }
-
-  return { warnings, errors };
+  
+  // Return legacy format for backward compatibility
+  return {
+    warnings: result.warnings.map(w => w.message),
+    errors: result.errors.map(e => e.message),
+    result,  // Include full result for enhanced features
+    config   // Return potentially preset-applied config
+  };
 }
 
+/**
+ * Validate project config with enhanced validation
+ */
 export function validateProjectConfig(projectConfig) {
-  const warnings = [];
-  const errors = [];
-
-  if (!projectConfig || typeof projectConfig !== 'object') {
-    warnings.push('Project config missing or invalid JSON.');
-    return { warnings, errors };
+  debug.step('Validating project config');
+  
+  // Apply preset if specified
+  let config = projectConfig;
+  if (projectConfig.preset) {
+    config = applyPreset(projectConfig);
   }
-
-  if (projectConfig.aspectRatio && !VIDEO_DIMENSIONS[projectConfig.aspectRatio]) {
-    warnings.push(`aspectRatio '${projectConfig.aspectRatio}' is not recognized.`);
+  
+  // Run enhanced validation
+  const result = enhancedValidateProject(config);
+  
+  // Log to debug
+  if (result.hasIssues()) {
+    debug.log('VALIDATION', 'Project config issues found', {
+      errors: result.errors.length,
+      warnings: result.warnings.length
+    });
   }
-
-  if (projectConfig.subtitle) {
-    const s = projectConfig.subtitle;
-    if (s.alignment !== undefined) {
-      const validAlignments = new Set(Object.values(SUBTITLE_ALIGNMENT));
-      if (!validAlignments.has(s.alignment)) {
-        warnings.push(`subtitle.alignment '${s.alignment}' is not valid.`);
-      }
-    }
-    if (s.fontSize !== undefined && (typeof s.fontSize !== 'number' || s.fontSize <= 0)) {
-      warnings.push('subtitle.fontSize should be a positive number.');
-    }
-  }
-
-  return { warnings, errors };
+  
+  // Return legacy format for backward compatibility
+  return {
+    warnings: result.warnings.map(w => w.message),
+    errors: result.errors.map(e => e.message),
+    result,  // Include full result
+    config   // Return potentially preset-applied config
+  };
 }
 
+/**
+ * Validate runtime app config (basic checks only)
+ */
 export function validateAppConfig(CONFIG) {
   const warnings = [];
-
-  if (!VIDEO_DIMENSIONS[CONFIG.aspectRatio] && !CONFIG.useOriginalSize) {
-    warnings.push(`Runtime aspectRatio '${CONFIG.aspectRatio}' unknown; using dimensions ${CONFIG.videoWidth}x${CONFIG.videoHeight}.`);
-  }
-
+  
+  // Basic runtime checks
   if (CONFIG.subtitleStyle.marginV < 0) {
     warnings.push('subtitleStyle.marginV should not be negative.');
   }
-
+  
   return { warnings };
 }
+
+// Export enhanced validator functions for direct use
+export { 
+  applyPreset,
+  listPresets,
+  generateExampleConfig
+};
+
+// Also export enhanced versions with different names
+export {
+  enhancedValidateChannel as validateChannelConfigEnhanced,
+  enhancedValidateProject as validateProjectConfigEnhanced
+};

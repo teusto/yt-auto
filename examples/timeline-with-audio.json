@@ -1,0 +1,53 @@
+{
+  "name": "Timeline with Global Audio",
+  "description": "Example timeline with voice and music tracks",
+  
+  "timeline": {
+    "segments": [
+      {
+        "type": "scene",
+        "path": "scenes/title.jpg",
+        "duration": 3,
+        "name": "title"
+      },
+      {
+        "type": "scene",
+        "path": "scenes/hook.mp4",
+        "name": "hook",
+        "mute": true
+      },
+      {
+        "type": "main",
+        "name": "content"
+      },
+      {
+        "type": "scene",
+        "path": "scenes/cta.jpg",
+        "duration": 5,
+        "name": "cta",
+        "transition": "fade-black",
+        "transitionDuration": 0.5
+      },
+      {
+        "type": "outro",
+        "path": "outro.mp4"
+      }
+    ],
+    
+    "audio": {
+      "voice": {
+        "path": "voice.mp3",
+        "startAt": "hook",
+        "volume": 1.0
+      },
+      "music": {
+        "path": "music.mp3",
+        "startAt": "title",
+        "stopAt": "cta",
+        "volume": 0.25,
+        "fadeIn": 2.0,
+        "fadeOut": 3.0
+      }
+    }
+  }
+}

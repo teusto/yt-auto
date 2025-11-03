@@ -20,17 +20,23 @@
 
 ### 🎨 Customization Guides
 
-3. **[SUBTITLE_PROPERTIES_GUIDE.md](SUBTITLE_PROPERTIES_GUIDE.md)** 📝
+3. **[CONFIG_GUIDE.md](CONFIG_GUIDE.md)** ⚙️ **NEW!**
+   - Enhanced config validation with helpful errors
+   - Quick-start presets (YouTube Shorts, TikTok, etc.)
+   - Simplified configuration options
+   - Complete field reference
+
+4. **[SUBTITLE_PROPERTIES_GUIDE.md](SUBTITLE_PROPERTIES_GUIDE.md)** 📝
    - All subtitle properties (colors, fonts, positions)
    - Config examples and best practices
    - Color combinations for different styles
 
-4. **[PER_VIDEO_LANGUAGE_GUIDE.md](PER_VIDEO_LANGUAGE_GUIDE.md)** 🌍
+5. **[PER_VIDEO_LANGUAGE_GUIDE.md](PER_VIDEO_LANGUAGE_GUIDE.md)** 🌍
    - Configure different languages per video
    - Multi-language channel setup
    - Language priority system
 
-5. **[AUTO_SUBTITLES.md](AUTO_SUBTITLES.md)** 🎙️
+6. **[AUTO_SUBTITLES.md](AUTO_SUBTITLES.md)** 🎙️
    - Setup automatic subtitle generation
    - AssemblyAI configuration
    - Pricing and usage guide
@@ -39,20 +45,20 @@
 
 ### 🔧 Advanced Features
 
-6. **[ADVANCED_FEATURES_GUIDE.md](ADVANCED_FEATURES_GUIDE.md)** 🚀
+7. **[ADVANCED_FEATURES_GUIDE.md](ADVANCED_FEATURES_GUIDE.md)** 🚀
    - Intro/Outro videos
    - CTA overlays (subscribe buttons)
    - Multi-format export (YouTube, TikTok, Instagram)
 
-7. **[VIDEO_CLIPS_GUIDE.md](VIDEO_CLIPS_GUIDE.md)** 🎥
+8. **[VIDEO_CLIPS_GUIDE.md](VIDEO_CLIPS_GUIDE.md)** 🎥
    - Mix images and video clips
    - Video trimming and looping
 
-8. **[ANIMATION_GUIDE.md](ANIMATION_GUIDE.md)** ✨
+9. **[ANIMATION_GUIDE.md](ANIMATION_GUIDE.md)** ✨
    - Ken Burns effects (zoom, pan)
    - Animation settings
 
-9. **[AUDIO_CONFIGURATION_GUIDE.md](AUDIO_CONFIGURATION_GUIDE.md)** 🔊
+10. **[AUDIO_CONFIGURATION_GUIDE.md](AUDIO_CONFIGURATION_GUIDE.md)** 🔊
    - Volume control (voice/music)
    - Fade effects
    - Audio presets
@@ -61,15 +67,15 @@
 
 ### 🐛 Fixes & Updates
 
-10. **[CONFIG_FIX_APPLIED.md](CONFIG_FIX_APPLIED.md)** ✅
+11. **[CONFIG_FIX_APPLIED.md](CONFIG_FIX_APPLIED.md)** ✅
     - Video config bug fixes
     - All properties now working
 
-11. **[FIXES_SUMMARY.md](FIXES_SUMMARY.md)** 🔧
+12. **[FIXES_SUMMARY.md](FIXES_SUMMARY.md)** 🔧
     - API caching fixes
     - Subtitle color configuration
 
-12. **[FIX_APPLIED.md](FIX_APPLIED.md)** 🌍
+13. **[FIX_APPLIED.md](FIX_APPLIED.md)** 🌍
     - Language detection improvements
     - Portuguese support
 
