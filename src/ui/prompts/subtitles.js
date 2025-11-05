@@ -15,9 +15,10 @@ export function promptSubtitleStyle(CONFIG) {
     logger.info('  3. Yellow (YouTube style)');
     logger.info('  4. Minimal (small, clean)');
     logger.info('  5. Cinematic (translucent background)');
-    logger.info('  6. Shadow (subtle shadow effect)\n');
+    logger.info('  6. Shadow (subtle shadow effect)');
+    logger.info('  7. White on Black (news/education style)\n');
 
-    rl.question('Choose style (1-6, Enter = 1): ', (answer) => {
+    rl.question('Choose style (1-7, Enter = 1): ', (answer) => {
       const choice = answer.trim() || '1';
 
       switch (choice) {
@@ -49,6 +50,11 @@ export function promptSubtitleStyle(CONFIG) {
         case '6':
           Object.assign(CONFIG.subtitleStyle, SUBTITLE_STYLES.SHADOW);
           logger.success('Shadow\n');
+          break;
+
+        case '7':
+          Object.assign(CONFIG.subtitleStyle, SUBTITLE_STYLES.WHITE_ON_BLACK);
+          logger.success('White on Black\n');
           break;
 
         default:

@@ -110,7 +110,8 @@ export const SUBTITLE_STYLES = {
   MINIMAL: { fontSize: 40, bold: false, fontColor: 'white', outlineWidth: 1, backgroundColor: 'transparent', lineSpacing: 0 },
   MODERN: { fontSize: 52, bold: true, fontColor: 'white', outlineWidth: 3, backgroundColor: 'transparent', lineSpacing: 0 },
   CINEMATIC: { fontSize: 38, bold: false, fontColor: 'white', outlineWidth: 1, outlineColor: 'black', backgroundColor: 'black@0.7', lineSpacing: 5 },
-  SHADOW: { fontSize: 48, bold: false, fontColor: 'white', outlineWidth: 2, outlineColor: 'black', shadowDepth: 3, shadowColor: 'black@0.6', backgroundColor: 'transparent', lineSpacing: 0 }
+  SHADOW: { fontSize: 48, bold: false, fontColor: 'white', outlineWidth: 2, outlineColor: 'black', shadowDepth: 3, shadowColor: 'black@0.6', backgroundColor: 'transparent', lineSpacing: 0 },
+  WHITE_ON_BLACK: { fontSize: 48, bold: true, fontColor: 'white', outlineWidth: 0, backgroundColor: 'black@0.8', lineSpacing: 3, borderStyle: 4 }
 };
 
 export const SUBTITLE_ASPECT_SCALE = {

@@ -956,7 +956,7 @@ function getMediaFiles(folder, extensions) {
 /**
  * Apply project config to global CONFIG
  */
-function applyProjectConfig(projectConfig) {
+function applyProjectConfig(projectConfig, channelPath = null) {
   // Store original config to restore later
   const originalConfig = JSON.parse(JSON.stringify({
     aspectRatio: CONFIG.aspectRatio,
@@ -1001,7 +1001,10 @@ function applyProjectConfig(projectConfig) {
         'yellow': SUBTITLE_STYLES.YELLOW,
         'minimal': SUBTITLE_STYLES.MINIMAL,
         'modern': SUBTITLE_STYLES.MODERN,
-        'shadow': SUBTITLE_STYLES.SHADOW
+        'cinematic': SUBTITLE_STYLES.CINEMATIC,
+        'shadow': SUBTITLE_STYLES.SHADOW,
+        'white-on-black': SUBTITLE_STYLES.WHITE_ON_BLACK,
+        'whiteonblack': SUBTITLE_STYLES.WHITE_ON_BLACK
       };
       const style = styleMap[projectConfig.subtitle.style];
       if (style) {
@@ -1047,20 +1050,48 @@ function applyProjectConfig(projectConfig) {
     }
     
     if (projectConfig.subtitle.fontName) {
-      // Look for font file in fonts/ folder
-      const fontPath = path.join(CONFIG.fontsFolder, projectConfig.subtitle.fontName + '.ttf');
-      const fontPathOtf = path.join(CONFIG.fontsFolder, projectConfig.subtitle.fontName + '.otf');
+      // Look for font file in channel fonts folder first, then global fonts folder
+      let foundFont = false;
+      let fontPath = null;
       
-      if (fs.existsSync(fontPath)) {
+      // Check channel fonts folder first (if channel path provided)
+      if (channelPath) {
+        const channelFontsFolder = path.join(channelPath, 'fonts');
+        const channelFontPathTtf = path.join(channelFontsFolder, projectConfig.subtitle.fontName + '.ttf');
+        const channelFontPathOtf = path.join(channelFontsFolder, projectConfig.subtitle.fontName + '.otf');
+        
+        if (fs.existsSync(channelFontPathTtf)) {
+          fontPath = channelFontPathTtf;
+          foundFont = true;
+          console.log(`✅ Using channel font: ${projectConfig.subtitle.fontName}`);
+        } else if (fs.existsSync(channelFontPathOtf)) {
+          fontPath = channelFontPathOtf;
+          foundFont = true;
+          console.log(`✅ Using channel font: ${projectConfig.subtitle.fontName}`);
+        }
+      }
+      
+      // Fallback to global fonts folder
+      if (!foundFont) {
+        const globalFontPathTtf = path.join(CONFIG.fontsFolder, projectConfig.subtitle.fontName + '.ttf');
+        const globalFontPathOtf = path.join(CONFIG.fontsFolder, projectConfig.subtitle.fontName + '.otf');
+        
+        if (fs.existsSync(globalFontPathTtf)) {
+          fontPath = globalFontPathTtf;
+          foundFont = true;
+          console.log(`✅ Using global font: ${projectConfig.subtitle.fontName}`);
+        } else if (fs.existsSync(globalFontPathOtf)) {
+          fontPath = globalFontPathOtf;
+          foundFont = true;
+          console.log(`✅ Using global font: ${projectConfig.subtitle.fontName}`);
+        }
+      }
+      
+      if (foundFont) {
         CONFIG.subtitleStyle.fontFamily = projectConfig.subtitle.fontName;
         CONFIG.subtitleStyle.fontPath = fontPath;
-        console.log(`✅ Using font: ${projectConfig.subtitle.fontName}`);
-      } else if (fs.existsSync(fontPathOtf)) {
-        CONFIG.subtitleStyle.fontFamily = projectConfig.subtitle.fontName;
-        CONFIG.subtitleStyle.fontPath = fontPathOtf;
-        console.log(`✅ Using font: ${projectConfig.subtitle.fontName}`);
       } else {
-        console.log(`⚠️  Font '${projectConfig.subtitle.fontName}' not found, using default`);
+        console.log(`⚠️  Font '${projectConfig.subtitle.fontName}' not found in channel or global fonts, using default`);
         CONFIG.subtitleStyle.fontFamily = 'Arial';
         CONFIG.subtitleStyle.fontPath = null;
       }
@@ -1159,8 +1190,8 @@ async function processBatchProjects() {
     console.log(`${'='.repeat(60)}\n`);
     
     try {
-      // Apply project config
-      const originalConfig = applyProjectConfig(project.config);
+      // Apply project config (pass channel path for font loading)
+      const originalConfig = applyProjectConfig(project.config, project.channelPath);
       
       // Copy files to input folder (temporary approach)
       await prepareProjectInput(project);
@@ -1483,7 +1514,15 @@ async function prepareProjectInput(project) {
   if (fs.existsSync(inputFolder)) {
     const files = fs.readdirSync(inputFolder);
     files.forEach(file => {
-      fs.unlinkSync(path.join(inputFolder, file));
+      const filePath = path.join(inputFolder, file);
+      const stat = fs.statSync(filePath);
+      if (stat.isDirectory()) {
+        // Recursively remove directories
+        fs.rmSync(filePath, { recursive: true, force: true });
+      } else {
+        // Remove files
+        fs.unlinkSync(filePath);
+      }
     });
   } else {
     fs.mkdirSync(inputFolder, { recursive: true });
@@ -1562,8 +1601,10 @@ async function prepareProjectInput(project) {
   // Copy selected images
   if (selectedImages.length > 0) {
     selectedImages.forEach((img, index) => {
-      const ext = path.extname(img);
-      fs.copyFileSync(img, path.join(inputFolder, `image_${String(index + 1).padStart(3, '0')}${ext}`));
+      // Handle both string paths and potential objects
+      const imgPath = typeof img === 'string' ? img : (img.path || img.file || img);
+      const ext = path.extname(imgPath);
+      fs.copyFileSync(imgPath, path.join(inputFolder, `image_${String(index + 1).padStart(3, '0')}${ext}`));
       mediaCount++;
     });
   }
@@ -1571,8 +1612,10 @@ async function prepareProjectInput(project) {
   // Copy videos (no random selection for videos yet)
   if (project.videos.length > 0) {
     project.videos.forEach((vid, index) => {
-      const ext = path.extname(vid);
-      fs.copyFileSync(vid, path.join(inputFolder, `video_${String(index + 1).padStart(3, '0')}${ext}`));
+      // Handle both string paths and potential objects
+      const vidPath = typeof vid === 'string' ? vid : (vid.path || vid.file || vid);
+      const ext = path.extname(vidPath);
+      fs.copyFileSync(vidPath, path.join(inputFolder, `video_${String(index + 1).padStart(3, '0')}${ext}`));
       mediaCount++;
     });
   }
@@ -1592,13 +1635,40 @@ async function moveOutputToProject(project) {
   }
   
   // Create output subfolder for project
-  const projectOutputFolder = path.join(outputFolder, 'batch', project.name);
+  // Use custom outputFolder if provided, otherwise use default structure
+  const projectOutputFolder = project.outputFolder || path.join(outputFolder, 'batch', project.name);
   if (!fs.existsSync(projectOutputFolder)) {
     fs.mkdirSync(projectOutputFolder, { recursive: true });
   }
   
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
-  const outputFile = path.join(projectOutputFolder, `${project.name}_${timestamp}.mp4`);
+  // Build filename: [language_code]_[social_media]_[name_of_the_folder_video]_[datetime]
+  
+  // 1. Language code (from project config or default to 'en')
+  const languageCode = (project.config.language || CONFIG.language || 'en').toLowerCase();
+  
+  // 2. Social media platform (map from aspect ratio)
+  const aspectRatio = project.config.aspectRatio || CONFIG.aspectRatio;
+  const socialMediaMap = {
+    '9:16': 'tiktok',      // TikTok/Shorts/Reels
+    '16:9': 'youtube',     // YouTube horizontal
+    '1:1': 'instagram',    // Instagram square
+    '4:5': 'instagram'     // Instagram portrait
+  };
+  const socialMedia = socialMediaMap[aspectRatio] || 'youtube';
+  
+  // 3. Video folder name (sanitize for filename)
+  const folderName = project.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+  
+  // 4. DateTime (format: YYYYMMDD_HHMMSS)
+  const now = new Date();
+  const datetime = now.toISOString()
+    .replace(/[-:]/g, '')
+    .replace('T', '_')
+    .split('.')[0];  // YYYYMMDD_HHMMSS
+  
+  // Build final filename
+  const filename = `${languageCode}_${socialMedia}_${folderName}_${datetime}.mp4`;
+  const outputFile = path.join(projectOutputFolder, filename);
   
   fs.renameSync(finalVideo, outputFile);
   
@@ -4233,8 +4303,8 @@ async function processChannelBatch() {
             // Prepare input files (copies to input folder)
             await prepareProjectInput(project);
             
-            // Apply project-specific config overrides
-            applyProjectConfig(project.config);
+            // Apply project-specific config overrides (pass channel path for font loading)
+            applyProjectConfig(project.config, project.channelPath);
             
             // Generate the video (skip prompts - config already set)
             // Pass video and channel folders for intro/outro detection
