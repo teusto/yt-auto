@@ -99,10 +99,10 @@ export async function mixAudioWithBackgroundMusic(
        [voice][music]amix=inputs=2:duration=longest:dropout_transition=2[mixed]`;
       console.log(`   Delaying voiceover by ${introDelay}s for intro`);
     } else {
-      // No intro delay - original behavior
+      // No intro delay - music continues for full duration (including extra video time)
       filterComplex = `[0:a]volume=${voiceVol}[voice];
        [1:a]volume=${musicVol},aloop=loop=-1:size=2e+09,atrim=0:${duration},afade=t=in:st=0:d=${musicFadeIn},afade=t=out:st=${fadeOutStart}:d=${musicFadeOut}[music];
-       [voice][music]amix=inputs=2:duration=first:dropout_transition=2[mixed]`;
+       [voice][music]amix=inputs=2:duration=longest:dropout_transition=2[mixed]`;
     }
     
     const args = [

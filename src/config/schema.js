@@ -120,10 +120,10 @@ export const CONFIG_SCHEMA = {
         style: {
           type: 'string',
           required: false,
-          validValues: Object.keys(SUBTITLE_STYLES).map(k => k.toLowerCase()),
+          validValues: Object.keys(SUBTITLE_STYLES).map(k => k.toLowerCase().replace(/_/g, '-')).concat(Object.keys(SUBTITLE_STYLES).map(k => k.toLowerCase())),
           default: 'classic',
           description: 'Subtitle style preset',
-          examples: ['classic', 'bold', 'yellow', 'minimal', 'modern', 'cinematic', 'shadow']
+          examples: ['classic', 'bold', 'yellow', 'minimal', 'modern', 'cinematic', 'shadow', 'white_on_black', 'white-on-black']
         },
         position: {
           type: 'string',
@@ -135,16 +135,21 @@ export const CONFIG_SCHEMA = {
         fontSize: {
           type: 'number',
           required: false,
-          min: 20,
+          min: 8,
           max: 200,
           default: 48,
-          description: 'Font size in pixels'
+          description: 'Font size in pixels (smaller values for vertical videos)'
         },
         fontColor: {
           type: 'string',
           required: false,
           default: 'white',
           description: 'Text color (e.g., "white", "yellow", "#FF0000")'
+        },
+        fontName: {
+          type: 'string',
+          required: false,
+          description: 'Custom font name (must be installed on system)'
         },
         outlineWidth: {
           type: 'number',
@@ -260,28 +265,142 @@ export const CONFIG_SCHEMA = {
           default: false,
           description: 'Enable CTA overlay'
         },
+        imagePath: {
+          type: 'string',
+          required: false,
+          description: 'Path to CTA image or video file'
+        },
+        isVideo: {
+          type: 'boolean',
+          required: false,
+          default: false,
+          description: 'Is CTA file a video (true) or image (false)'
+        },
         position: {
           type: 'string',
           required: false,
-          validValues: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
-          default: 'bottom-right',
+          validValues: ['left-top', 'middle-top', 'right-top', 'left-bottom', 'middle-bottom', 'right-bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right'],
+          default: 'right-bottom',
           description: 'CTA position on screen'
         },
         startTime: {
           type: 'number',
           required: false,
-          min: 0,
-          default: 0,
-          description: 'When to show CTA (seconds from start)'
+          default: 5,
+          description: 'When to show CTA (seconds from start, negative = from end)'
         },
         duration: {
           type: 'number',
           required: false,
           min: 0,
-          default: 0,
-          description: 'CTA duration (0 = until end)'
+          default: 5,
+          description: 'CTA duration (seconds)'
+        },
+        opacity: {
+          type: 'number',
+          required: false,
+          min: 0,
+          max: 1,
+          default: 0.9,
+          description: 'CTA opacity (0.0 to 1.0)'
+        },
+        scale: {
+          type: 'number',
+          required: false,
+          min: 0.05,
+          max: 1,
+          default: 0.15,
+          description: 'CTA scale relative to video width (0.15 = 15%)'
         }
       }
+    },
+    
+    extraVideoDuration: {
+      type: 'number',
+      required: false,
+      min: 0,
+      max: 10,
+      default: 2,
+      description: 'Extra seconds after voiceover ends (prevents abrupt ending)'
+    },
+    
+    subtitleMaxLines: {
+      type: 'number',
+      required: false,
+      min: 1,
+      max: 5,
+      default: 2,
+      description: 'Maximum lines per subtitle block'
+    },
+    
+    fallbackToGlobalPool: {
+      type: 'boolean',
+      required: false,
+      default: true,
+      description: 'Fallback to global image pool if channel pool is empty'
+    },
+    
+    useChannelMusicPool: {
+      type: 'boolean',
+      required: false,
+      default: false,
+      description: 'Use channel music pool instead of global'
+    },
+    
+    imageFadeTransition: {
+      type: 'object',
+      required: false,
+      description: 'Fade transitions between images',
+      schema: {
+        enabled: {
+          type: 'boolean',
+          required: false,
+          default: false,
+          description: 'Enable fade transitions'
+        },
+        duration: {
+          type: 'number',
+          required: false,
+          min: 0.1,
+          max: 3,
+          default: 0.5,
+          description: 'Fade duration (seconds)'
+        },
+        firstLastOnly: {
+          type: 'boolean',
+          required: false,
+          default: false,
+          description: 'Only fade first and last image'
+        }
+      }
+    },
+    
+    exportFormats: {
+      type: 'object',
+      required: false,
+      description: 'Export video in multiple formats',
+      schema: {
+        enabled: {
+          type: 'boolean',
+          required: false,
+          default: false,
+          description: 'Enable multi-format export'
+        },
+        formats: {
+          type: 'array',
+          required: false,
+          default: ['16:9'],
+          description: 'List of aspect ratios to export'
+        }
+      }
+    },
+    
+    imageCount: {
+      type: 'number',
+      required: false,
+      min: 1,
+      max: 100,
+      description: 'Number of images to use from pool'
     }
   }
 };

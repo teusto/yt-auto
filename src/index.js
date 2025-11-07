@@ -134,7 +134,20 @@ const CONFIG = {
   exportFormats: {
     formats: ['16:9'],     // Will be set by user prompt: ['16:9', '9:16', '1:1', 'original']
     outputNames: PLATFORM_FORMAT_MAP
-  }
+  },
+  
+  // Image Fade Transitions Configuration
+  imageFadeTransition: {
+    enabled: false,        // Enable fade transitions between images
+    duration: 0.5,         // Duration of fade in seconds (default: 0.5s)
+    firstLastOnly: false   // If true, only fade first and last clips (no between-clip fades)
+  },
+  
+  // Video Duration Extension Configuration
+  extraVideoDuration: 2.0,   // Extra seconds after voiceover ends (prevents abrupt ending)
+  
+  // Subtitle Line Limit Configuration
+  subtitleMaxLines: 2        // Maximum lines per subtitle (2 is recommended for readability)
 };
 
 /**
@@ -1145,6 +1158,32 @@ function applyProjectConfig(projectConfig, channelPath = null) {
     }
   }
   
+  // Handle image fade transitions config
+  if (projectConfig.imageFadeTransition) {
+    if (!CONFIG.imageFadeTransition) {
+      CONFIG.imageFadeTransition = {};
+    }
+    if (projectConfig.imageFadeTransition.enabled !== undefined) {
+      CONFIG.imageFadeTransition.enabled = projectConfig.imageFadeTransition.enabled;
+    }
+    if (projectConfig.imageFadeTransition.duration !== undefined) {
+      CONFIG.imageFadeTransition.duration = projectConfig.imageFadeTransition.duration;
+    }
+    if (projectConfig.imageFadeTransition.firstLastOnly !== undefined) {
+      CONFIG.imageFadeTransition.firstLastOnly = projectConfig.imageFadeTransition.firstLastOnly;
+    }
+  }
+  
+  // Handle extra video duration config
+  if (projectConfig.extraVideoDuration !== undefined) {
+    CONFIG.extraVideoDuration = projectConfig.extraVideoDuration;
+  }
+  
+  // Handle subtitle max lines config
+  if (projectConfig.subtitleMaxLines !== undefined) {
+    CONFIG.subtitleMaxLines = projectConfig.subtitleMaxLines;
+  }
+  
   return originalConfig;
 }
 
@@ -1697,7 +1736,10 @@ function convertSRTtoASS(srtPath, style) {
     }
   }
   
-  const result = convertSRTtoASSExternal(srtPath, style, CONFIG.videoWidth, CONFIG.videoHeight, colorToASS, words);
+  // Get max lines from config (default: 2)
+  const maxLines = CONFIG.subtitleMaxLines || 2;
+  
+  const result = convertSRTtoASSExternal(srtPath, style, CONFIG.videoWidth, CONFIG.videoHeight, colorToASS, words, maxLines);
   if (result) {
     console.log(`   ✅ ASS file created: ${path.basename(result)}\n`);
   }
@@ -2214,6 +2256,12 @@ async function createVideoWithMediaFiles(mediaFiles, audioDuration, tempVideoPat
     console.log(`🎨 Applying ${CONFIG.animationEffect} animation to images`);
     console.log(`⚡ Using optimized settings: 24 fps, multi-threaded`);
   }
+  
+  // Check if fade transitions are enabled
+  const enableFades = CONFIG.imageFadeTransition && CONFIG.imageFadeTransition.enabled;
+  if (enableFades && mediaFiles.length > 1) {
+    console.log(`✨ Fade transitions enabled (${CONFIG.imageFadeTransition.duration || 0.5}s between clips)`);
+  }
 
   return new Promise(async (resolve, reject) => {
     try {
@@ -2243,19 +2291,45 @@ async function createVideoWithMediaFiles(mediaFiles, audioDuration, tempVideoPat
               '-t', clipDuration.toString()
             ];
             
+            // Build video filter chain
+            let videoFilters = [];
+            
             // Add animation filter if enabled
             if (CONFIG.animationEffect !== 'static') {
               const animationFilter = getAnimationFilter(clipDuration);
               if (animationFilter) {
-                clipArgs.push('-vf', animationFilter);
+                videoFilters.push(animationFilter);
               }
             } else {
               // Static image - apply scaling/padding
               if (CONFIG.useOriginalSize) {
-                clipArgs.push('-vf', `fps=${CONFIG.fps}`);
+                videoFilters.push(`fps=${CONFIG.fps}`);
               } else {
-                clipArgs.push('-vf', `scale=${CONFIG.videoWidth}:${CONFIG.videoHeight}:force_original_aspect_ratio=decrease,pad=${CONFIG.videoWidth}:${CONFIG.videoHeight}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${CONFIG.fps}`);
+                videoFilters.push(`scale=${CONFIG.videoWidth}:${CONFIG.videoHeight}:force_original_aspect_ratio=decrease,pad=${CONFIG.videoWidth}:${CONFIG.videoHeight}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${CONFIG.fps}`);
               }
+            }
+            
+            // Add fade transitions if enabled
+            if (enableFades && mediaFiles.length > 1) {
+              const fadeDuration = CONFIG.imageFadeTransition.duration || 0.5;
+              const isFirstClip = i === 0;
+              const isLastClip = i === mediaFiles.length - 1;
+              
+              // Fade in at start (for first clip or all clips)
+              if (isFirstClip || !CONFIG.imageFadeTransition.firstLastOnly) {
+                videoFilters.push(`fade=t=in:st=0:d=${fadeDuration}:color=black`);
+              }
+              
+              // Fade out at end (for last clip or all clips)
+              if (isLastClip || !CONFIG.imageFadeTransition.firstLastOnly) {
+                const fadeOutStart = Math.max(0, clipDuration - fadeDuration);
+                videoFilters.push(`fade=t=out:st=${fadeOutStart}:d=${fadeDuration}:color=black`);
+              }
+            }
+            
+            // Apply filters
+            if (videoFilters.length > 0) {
+              clipArgs.push('-vf', videoFilters.join(','));
             }
             
             const encodingSettings = getEncodingSettings();
@@ -3567,6 +3641,14 @@ async function generateVideo(skipPrompts = false, videoFolder = null, channelFol
       console.log('\n⏱️  Analyzing audio duration...');
       audioDuration = await getAudioDuration(audioPath);
       console.log(`✅ Audio duration: ${audioDuration.toFixed(2)} seconds`);
+      
+      // Add extra time after voiceover to prevent abrupt ending
+      const extraTime = CONFIG.extraVideoDuration || 0;
+      if (extraTime > 0) {
+        const totalDuration = audioDuration + extraTime;
+        console.log(`✨ Adding ${extraTime.toFixed(1)}s extra duration (${audioDuration.toFixed(2)}s + ${extraTime.toFixed(1)}s = ${totalDuration.toFixed(2)}s)`);
+        audioDuration = totalDuration;
+      }
     }
     
     if (hasBackgroundMusic) {
